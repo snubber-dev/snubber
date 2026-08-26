@@ -1,0 +1,69 @@
+name: "Snubber record check"
+description: "Runs the record interlocks on a pull request."
+# Composite, running the CLI directly. Never a bundled JavaScript action:
+# committing dist/index.js to a repository whose thesis is that views are
+# computed and never stored is a contradiction on the first commit.
+runs:
+  using: composite
+  steps:
+    # The Node version has one home and it is this action's own package.json.
+    # It is read here rather than passed to setup-node's node-version-file,
+    # because that input is joined onto GITHUB_WORKSPACE before the file is
+    # opened, so it can only ever name a path inside the consumer's checkout —
+    # never this action's, which lives outside it. Read from disk instead;
+    # GITHUB_ACTION_PATH is where the runner put us and nothing rewrites it.
+    #
+    # This step needs jq, which is on GitHub-hosted images and is not promised
+    # by a self-hosted runner or a supplied container. That is the stricter of
+    # the two things this action requires and it is not the one it advertises,
+    # so it says so itself rather than failing as a missing command.
+    - name: node version
+      id: node
+      shell: bash
+      run: |
+        command -v jq >/dev/null || {
+          echo "::error::This action needs jq to read its own engines.node." \
+               "GitHub-hosted runners have it; this one does not."
+          exit 1
+        }
+        # `shell: bash` runs with -e, so a bare `jq -e` returning null on a
+        # missing field kills the step with no output at all — the substitution
+        # swallows the one line that would have said why. Both failures are
+        # named here or neither is.
+        v=$(jq -r '.engines.node // empty' "$GITHUB_ACTION_PATH/package.json") || {
+          echo "::error::Could not parse $GITHUB_ACTION_PATH/package.json."
+          exit 1
+        }
+        [ -n "$v" ] || {
+          echo "::error::This action reads its Node version from its own" \
+               "package.json engines.node, and that field is missing."
+          exit 1
+        }
+        echo "version=$v" >> "$GITHUB_OUTPUT"
+    # engines.node is a range, so this resolves to the newest Node satisfying
+    # it and the gate runs on a different Node on different days — a standing
+    # question, named rather than hidden, reaching the one version this
+    # repository declares.
+    - uses: actions/setup-node@v7
+      with:
+        node-version: ${{ steps.node.outputs.version }}
+    - name: check
+      shell: bash
+      run: node "${{ github.action_path }}/src/cli.ts" check
+    # always(), so a failing check still posts the board. `shell: bash` runs
+    # with -e, and board exits 2 on a tool stop — the always() case after a
+    # failed check — which would abort the group between the opening and
+    # closing fence and swallow every later summary append. The board's exit
+    # is not this step's verdict; the check step already gave one. Four
+    # backticks, so a value carrying a backtick run cannot close the fence.
+    - name: board
+      if: always()
+      shell: bash
+      run: |
+        board=$(node "${{ github.action_path }}/src/cli.ts" board 2>&1) || true
+        {
+          echo '## Record'
+          echo '````'
+          printf '%s\n' "$board"
+          echo '````'
+        } >> "$GITHUB_STEP_SUMMARY"

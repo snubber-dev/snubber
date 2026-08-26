@@ -1,0 +1,37 @@
+# The workflow is the second consumer of the one Node floor R-D-node-floor
+# names — the action being the first — and it dogfoods action.yml on this
+# repository before any stranger runs it.
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # The action this repository ships, run against the record it lives in.
+      - uses: ./
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # setup-node reads engines.node from package.json — the floor's one home.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+      - name: battery
+        run: node test/run.ts
+      - name: build
+        run: |
+          # Node 25 dropped corepack from the distribution; install it first.
+          npm install -g corepack
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm run build
+      - name: pack
+        run: npm pack --dry-run

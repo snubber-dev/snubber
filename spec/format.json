@@ -1,0 +1,310 @@
+{
+  "format": "snubber-record",
+  "version": "0.1.0",
+  "note": "This file is the authority. spec/v0.md is prose about it and restates nothing mechanical. An implementation is built from this file. Where a value below is a copy of another value in this file, the copy declares `mirrors` naming its sources and `asserted_by` naming the rule that keeps the agreement — and where mirrors cannot attach (an array member, a single-key binding), the copy is checked by the rule that owns the binding instead — M-28's totality clauses, M-22 for read_by, M-27 for asserted_by. Either way the literal is never trusted, only checked. Rule numbers M-10 and M-11 are retired and are never reused.",
+  "base": {
+    "vcs": "git",
+    "forge": "optional",
+    "note": "A record is a git repository; a forge is a tier above git and never the base. Every rule below is decidable from the tree alone, which is a fact about the rules as written and not a ceiling. A verdict is read over a commit's tree: artifacts that arrive together are judged together, and between commits the record owes nobody an answer. What a rule may read beyond the tree, and how it would declare that, is not yet a field here. Immutability itself is a promise the tree cannot show: an artifact whose type declares mutable false is written once and never edited, and no rule sees history — an unenforceable promise, named as one; tooling that reads history may enforce it, rules do not."
+  },
+  "id": {
+    "grammar": "^R-[EDW]-[A-Za-z0-9-]+$",
+    "mirrors": ["keys(types)"],
+    "asserted_by": "M-27",
+    "note": "A fixed prefix, the type letter, then a name rather than a number. Unordered, author-scopable, and the name segment carries no machine meaning. An ID is immutable once written, including when it becomes inaccurate: the title is corrected, the ID is not. Plain alternation, portable to RE2 and Python. The type letters are a copy of the keys of `types`; M-27 recomposes and compares.",
+    "filename": "The file is markdown, extension .md; the stem must equal the ID."
+  },
+  "context": {
+    "file": "record/context.md",
+    "sentinel": "<!-- snubber:unfilled -->",
+    "note": "The file states what the project is, uncontested; anything that wants a because belongs in a Decision, and anything the record can derive the record states — the file carries only what cannot be derived. Charter, not record: watched for presence and sentinel, nothing else — bare references and web addresses there see no rule, a named ceiling; contested content there is a review's question. Optional to have, not optional to be empty: absence is a state, a committed sentinel is a violation. M-26 reads this section for both values; M-15 reads it for the file it measures."
+  },
+  "types": {
+    "E": {
+      "name": "Evidence",
+      "home": "record/evidence/",
+      "mutable": false,
+      "events": [],
+      "fields": {
+        "Grade": { "required": true, "read_by": [], "values": { "measured": {}, "reported": {}, "assumed": {} } },
+        "Recorded": { "required": true, "date": true, "read_by": [] },
+        "Source": { "required": true, "read_by": [], "shape": "What produced or holds this measurement. An external source carries its URL as data, written backtick-wrapped — as the whole value, or as a span inside prose: the wrap keeps ID-shaped fragments of the URL out of the reference scan either way. The surrounding words are scanned like any prose — a bare ID among them is a reference like any other — and a span carrying only an ID is M-17's violation here, not a cross-record trace. Never a markdown link." },
+        "Supersedes": { "required": false, "read_by": ["M-30"], "shape": "Names the older Evidence of this record that this measurement replaces." }
+      }
+    },
+    "D": {
+      "name": "Decision",
+      "home": "record/decisions/",
+      "mutable": true,
+      "events": ["Closed", "Reopened", "Re-closed"],
+      "event_fields": {
+        "Closed": ["Ruling", "Scope"],
+        "Re-closed": ["Ruling", "Scope"]
+      },
+      "optional_event_fields": {
+        "Closed": ["Reopens when", "Forced by"],
+        "Reopened": ["Forced by"],
+        "Re-closed": ["Reopens when", "Forced by"]
+      },
+      "fields": {
+        "Status": { "required": true, "read_by": ["M-07"] },
+        "Opened": { "required": true, "date": true, "read_by": ["M-20"] },
+        "Forced by": { "read_by": [], "shape": "Names the Evidence that forced that event. An event-carried field: it rides the Closed, Re-closed or Reopened block, and each event's value is that event's statement — a closing's Forced by names what forced the ruling, a reopening's what forced the reopening; an open Decision carries no forcing, having ruled nothing yet. An external forcing source is re-derived as local Evidence." },
+        "Settles when": { "required": false, "read_by": [] },
+        "Ruling": { "read_by": [], "min_length": 3, "shape": "One line that rules; the argument belongs to the body below. One line is what keeps the record's most load-bearing sentence — and every later edit to it — reviewable as a diff. A Ruling that cannot fit is doing the body's work, or is two Decisions." },
+        "Scope": { "read_by": ["M-14"] },
+        "Reopens when": { "read_by": [] }
+      }
+    },
+    "W": {
+      "name": "Work",
+      "home": "record/work/",
+      "mutable": true,
+      "events": ["Closed"],
+      "event_fields": {
+        "Closed": ["Outcome"]
+      },
+      "fields": {
+        "Kind": {
+          "required": true,
+          "read_by": [],
+          "values": {
+            "build": {},
+            "probe": { "closed_requires": ["Probes"] }
+          }
+        },
+        "Status": { "required": true, "read_by": ["M-07"] },
+        "Opened": { "required": true, "date": true, "read_by": ["M-20"] },
+        "Done when": { "required": true, "read_by": [] },
+        "Under": { "required": false, "read_by": ["M-14"] },
+        "Blocked by": { "required": false, "read_by": ["M-23"] },
+        "Probes": { "required": false, "read_by": [], "shape": "A comma-separated list of Evidence IDs, or the literal `none` as the entire value — never a list member; the whole-value strip makes backticks immaterial there. IDs are written bare and resolve under M-17. Legal at open and at close, whatever the Kind, and M-05's ids-or-none contract binds wherever the field appears: the opening value names what the probe addresses — `none` there declares no pre-existing Evidence is addressed, the probe exists to produce new measurement — the closing value what it settled or produced; each run's value is that run's statement." },
+        "Outcome": { "read_by": [], "min_length": 3, "shape": "One line stating what closing this work produced; elaboration belongs to the body. One line keeps the outcome, and its edits, reviewable as a diff." }
+      }
+    }
+  },
+  "grammar": {
+    "heading": {
+      "value": "^# (R-[EDW]-[A-Za-z0-9-]+)(?: — .*)?$",
+      "mirrors": ["id.grammar"],
+      "asserted_by": "M-27"
+    },
+    "field": {
+      "value": "^\\*\\*([A-Za-z][A-Za-z ]*)\\.\\*\\* (.+)$",
+      "mirrors": []
+    },
+    "event": {
+      "value": "^## (Closed|Reopened|Re-closed) — (\\d{4}-\\d{2}-\\d{2})\\s*$",
+      "mirrors": ["union(types.*.events)", "grammar.date.value"],
+      "asserted_by": "M-27"
+    },
+    "event_prefix": {
+      "value": "^## (Closed|Reopened|Re-closed)(?:[^A-Za-z0-9-]|$)",
+      "mirrors": ["union(types.*.events)"],
+      "asserted_by": "M-27"
+    },
+    "date": {
+      "value": "^\\d{4}-\\d{2}-\\d{2}$",
+      "mirrors": []
+    }
+  },
+  "status_derivation": {
+    "note": "Status is a materialised view of the event sequence, never an authority. The derivation reads the last event in file order; none is the empty sequence. An event, here and to every rule, is a line the full event grammar accepts — a prefix-matching near-miss is M-08's violation and no event at all. An event the derivation does not key is skipped — the status is read from the last keyed event; the illegal event is M-09's violation, never this rule's. M-07 enforces the equality. The status value set is this derivation's codomain; it has no second home.",
+    "D": {
+      "none": "open",
+      "Closed": "closed",
+      "Re-closed": "closed",
+      "Reopened": "reopened"
+    },
+    "W": {
+      "none": "open",
+      "Closed": "closed"
+    }
+  },
+  "transitions": {
+    "note": "A transitions list names the statuses its event is legal from, in the derivation's own vocabulary; the state before any event is the status the derivation assigns the empty sequence. M-09 reads this section.",
+    "D": {
+      "Closed": ["open"],
+      "Reopened": ["closed"],
+      "Re-closed": ["reopened"]
+    },
+    "W": {
+      "Closed": ["open"]
+    }
+  },
+  "scope": {
+    "field": "Scope",
+    "value": "A comma-separated list of backticked glob patterns, or the literal `none` as the entire value — never a list member; the whole-value strip makes backticks immaterial there. A glob may carry the leading marker !<, declared in the dialect: the path has been eaten and must stay gone.",
+    "glob_dialect": {
+      "anchor": "Globs match repository-root-relative paths, whole-path.",
+      "**": "gitignore's reading, stated: a leading **/ matches zero or more leading directories, a /**/ in the middle matches zero or more directories, and a trailing /** matches everything inside — never the named path itself; a ** anywhere else is a *. The dialect follows gitignore here because the record is git-fueled; the !< marker below is where it deliberately is not gitignore.",
+      "*": "does not cross /",
+      "?": "exactly one character, not /",
+      "!<": "leading, marks an absent-glob: once M-14's gate is open the glob must match no file — the path has been eaten. Before the gate, a still-matching absent-glob is a report for a view, never a violation. This dialect's own marker — it is not gitignore's !, and a path whose name begins with the literal characters !< cannot be positively scoped, a named ceiling.",
+      "character_classes": false,
+      "braces": false,
+      "note": "Everything else is literal."
+    }
+  },
+  "limits": {
+    "line_length": 300,
+    "work_words": 300,
+    "word": "A word is a maximal run of non-whitespace in the masked text, counted from the first body line that is non-field and non-blank as raw text — a masked-blank line can start the count and contributes nothing — to the end of the file. Code counts zero: masked code contributes no words — which prices the quoting escape and is a named ceiling: prose fenced as code zeroes the budget, visible cosplay in every render, a review's question. The opening field run is free; event headings and the fields inside event blocks count."
+  },
+  "rules": [
+    {
+      "id": "M-01",
+      "name": "artifact-links-resolve",
+      "text": "Every markdown link from an artifact to a path under record/ resolves to an existing file. Links from an immutable artifact — one whose type declares mutable false — are historical and are not checked: a link is a statement about the tree at recording time, and git keeps that tree recoverable — today's tree is the only tree a rule reads. The boundary with M-13 is the destination's repository-root-relative path, which parsing.links computes before the existence test, so a dangling destination still has one: under record/, resolving or dangling, a link is this rule's alone; everywhere else it is M-13's. One mistake, one red."
+    },
+    {
+      "id": "M-02",
+      "name": "id-grammar",
+      "text": "Every artifact ID matches the ID grammar, and the file stem equals the ID. The grammar half is implied by the heading grammar M-27 keeps in agreement; the stem is this rule's teeth, and the redundancy is stated rather than deleted. The stem is the identity: in every tree, red included, resolution and uniqueness read the stem, and the heading is checked against it — a divergent heading is one violation here, and checkers agree even mid-violation. The type, too, is the stem's: the letter decides which declarations bind, wherever the file sits — M-25 owns the placement red. A stem the grammar rejects binds nothing further: the file occupies its stem in M-03's namespace and is an existing file to link resolution, and no other rule reads it — one mistake, one red: it does not belong, and the remedy is a rename or a move."
+    },
+    {
+      "id": "M-03",
+      "name": "id-unique",
+      "text": "No ID is the ID of two artifacts."
+    },
+    {
+      "id": "M-04",
+      "name": "one-artifact-per-file",
+      "text": "Exactly one line matching the heading grammar appears in an artifact file."
+    },
+    {
+      "id": "M-05",
+      "name": "required-fields",
+      "text": "Every field the type declares required is present in the opening field run; every field an event requires is present in that event's block, including any requirement the artifact's declared field values impose (closed_requires), which binds at every closing event — any event the type's derivation keys to closed. A closed_requires-named field carries, wherever it appears — opening run or closing-event block, whatever the artifact's declared value — only bare IDs resolving in this record, or the single literal none: the escape is part of the machinery, and a value that is neither is a violation. Every field declaring min_length carries a value at least that many characters long — insurance against the empty gesture; a value's real norm lives in its shape. Requirements are read from the declarations, never hardcoded; an absent required is false. Where an event block's run is empty and field-shaped lines naming any of its required fields stand inside the block, those fields' violations merge into one — the block misplaced its run — and M-19's tripwire passes the block's mapped-label lines over: one mistake, one red, pointed at the layout; a required field named nowhere in the block keeps its own violation — an absence is not a layout mistake."
+    },
+    {
+      "id": "M-06",
+      "name": "enum-values",
+      "text": "Any field declaring values carries a declared value only."
+    },
+    {
+      "id": "M-07",
+      "name": "status-derived",
+      "text": "The declared Status equals the derivation from the event sequence. An absent Status is M-05's violation and is passed over here."
+    },
+    {
+      "id": "M-08",
+      "name": "event-grammar",
+      "text": "Any line matching the event prefix grammar matches the event grammar exactly. A heading that misses it is an error, never prose — and never an event: the event sequence every other rule reads is the lines the full event grammar accepts, and a line red here is not in it; this rule owns that red alone, and no derivation, ordering or transition rule sees the line. An event word continued by a hyphen or a word character is prose, not a near-miss — the prefix grammar releases hyphenated compounds deliberately, and does so without lookahead so the grammars stay RE2-portable."
+    },
+    {
+      "id": "M-09",
+      "name": "transition-legality",
+      "text": "Every event is legal from the state its predecessors produce. The state is the status the derivation assigns to the events before it — the empty sequence included — read with the same pass-over M-07 uses. An event its type's transitions map has no row for is legal from no state."
+    },
+    {
+      "id": "M-12",
+      "name": "connectivity",
+      "text": "Every artifact references another artifact or is referenced by one. A reference, to this rule, is a resolving bare ID reference — field values included — or a markdown link whose destination is an artifact; a code-spanned ID is no edge here either. A record with exactly one artifact passes: participation needs a second party, and a red no author can avoid teaches that red is sometimes fine. From the second artifact on the discipline binds. Participation, not reachability: islands larger than one pass, and that ceiling is deliberate — in-degree cannot exist at creation time, and the remedy is unavailable for an artifact whose type declares mutable false, which is never edited."
+    },
+    {
+      "id": "M-13",
+      "name": "live-file-refs",
+      "text": "A markdown link from a Decision or Work item resolves inside the repository — where its destination's root-relative path lies outside record/; a destination under record/, resolving or dangling, is M-01's alone and is passed over here (parsing.links computes the path before the existence test). One mistake, one red. An external destination — one carrying a URI scheme — is a violation here, deliberately: the web is cited by re-deriving it as this record's Evidence, whose Source carries the URL as data, or it appears code-spanned — a trace the scans ignore — never bare; a link the tree cannot watch is the wrong form, and this red is the tripwire that says so. A bare web reference is this rule's violation too: a maximal whitespace-free token containing :// in the masked text of a Decision or Work item, outside every link's destination and title — link text is prose to this scan, and a definition line stays unread by this scan, the named ceiling — bare URLs breed phantom bare-ID references, and the span is one keystroke. Scheme-only forms without :// (mailto:-style) slip this net, a named ceiling. Links from an immutable artifact — one whose type declares mutable false — are historical and are not checked."
+    },
+    {
+      "id": "M-14",
+      "name": "scope-resolves",
+      "text": "A closed Decision's Scope globs each match at least one file — and each !<-marked glob matches none — once a Work item naming that Decision under Under has closed. Under reads as items too: a closing Work opens the gate for every Decision it names. The Scope read is the latest closing event's — a closing event is any event its type's derivation keys to closed — each run's value is that run's statement, and earlier Scopes are history; a latest closing event lacking Scope is M-05's violation, and its Decision is passed over here. A Scope of the literal none declares that no file carries the ruling and is exempt. Until such a Work item closes, an unmatched positive glob — or a still-matching absent-glob — is a report for a view, never a violation: before implementation, matching nothing, or still matching for an eaten path, is the expected state, and needs-a-look gets a view. The gate is coarse, deliberately: any closed implementing Work opens it, including one closed before a reopening — stale implementation is needs-a-look, a view's question, never a rule's. A post-gate Scope is a standing claim about the present tree, and a tree that has emptied it — the Work closed moot, the files since deleted — disproves it: that red is the pager, and the remedy is the reopening ceremony, a Re-closed whose Scope tells the truth, none included. The gate is also opt-in, a named ceiling: an implementing Work that omits Under never opens it, and no rule can demand the naming — the never-gated Scope is a view's flag."
+    },
+    {
+      "id": "M-15",
+      "name": "line-length",
+      "text": "No line in a Decision, a Work item, or the file the context section names exceeds the line_length limit. The measure is the raw line, in code points — never bytes, never columns; a line lying wholly inside a fenced block is exempt — the fence is the deliberate escape for verbatim long content, and no field line can use it, a fenced line being no field line at all. The context file gets no exemption: it is not an artifact and masking never reaches it. An artifact whose type declares mutable false is exempt, deliberately: the immutable type is where the format sends verbatim external data — a Source URL carried as data is the doctrine's own form — and no field line can take the fence escape, so a limit here would outlaw the record's right form. That a violating immutable artifact would also be red forever, its only remedy an edit, is secondary."
+    },
+    {
+      "id": "M-16",
+      "name": "work-budget",
+      "text": "A Work item body does not exceed the work_words limit, counted as limits.word defines."
+    },
+    {
+      "id": "M-17",
+      "name": "refs-resolve",
+      "text": "Every bare ID reference in an artifact resolves to an artifact in this record. A reference written in a code span is not a reference and is how a cross-record reference is written. Inside a declared field's value that escape closes: a code span whose entire content, trimmed of surrounding whitespace, matches the ID grammar there is a violation — in a field value an artifact is named bare or not at all, and backticks in values are for non-references. The unit is the span, never a token: a wrapped URL whose path carries an ID-shaped segment is Source's own legal form, and a span mixing an ID with other text — text, never mere padding — slips this inspection — a named ceiling; a span is never a reference, so no edge is hidden. This inspection reads the raw value; the whole-value strip serves value comparison only and never launders a backticked ID into a bare one. A resolving reference satisfies this rule whatever type it names; where a shape names a type, that expectation is a view's, enforced nowhere — deliberately."
+    },
+    {
+      "id": "M-18",
+      "name": "link-text-agrees",
+      "text": "A markdown link's text agrees with its destination. Where the text matches the ID grammar, the destination's file stem equals that ID; where the text is itself a path, its basename equals the destination's. Basename and not resolved target, because a text naming a file from the repository root and a destination relative to the artifact are both honest. The ID clause is tested first; the text is a path when it is a single whitespace-free token containing a slash or a dot. A destination that is an artifact — what M-25's home-walk gathers, M-24's own boundary — is M-24's alone and is passed over here entirely: the two rules partition destinations as M-01 and M-13 partition paths. An external destination is passed over here entirely — M-13 owns it, and its link text is unbound. Links from an immutable artifact — one whose type declares mutable false — are historical and are not checked. Everything else is prose, and prose link text is unbound."
+    },
+    {
+      "id": "M-19",
+      "name": "field-shape",
+      "text": "A declared field name appears only inside the field run that opens an artifact or an event block — a run is contiguous over its non-blank lines; a blank line neither closes a run nor belongs to it — and no key appears twice in one run — label comparison is case-insensitive everywhere: membership, duplicates, and the tripwire below alike. A declared label written inside a run in a case its declaration does not use is a violation here, the field otherwise read as the declaration it names — the record renders what it says, and one mistake earns one red: M-05 sees the field present. The first clause has teeth: a field-shaped line whose label is a field name any type declares — the field names are reserved words of the record, not of the type; the comparison case-insensitive, because a case-flipped label is the same silent drift, dressed better — outside every run, is a violation, never prose — it is how an optional field drifts silently out of the machinery, or apes another type's and looks live while doing nothing — and the fence is the quoting escape, a colliding body label rewords; inside an event block whose empty run M-05 already owns as one misplaced-run red, the block's mapped-label lines are passed over here; a field-shaped line with an undeclared label outside a run stays prose. The runs are typed: a field the type's event maps name appears only inside event blocks, and an event block carries only the fields its own event's maps name — in a closing-event block — any event the type's derivation keys to closed — also any field a closed_requires of the type's own declarations names. Every other declared field belongs to the opening run alone, except a field the type's own closed_requires names, which is legal in both; each run's value is that run's statement. And runs are closed sets: the opening run carries only the declared fields that belong to it, as event blocks already do — an undeclared key inside any run is a violation, never prose, which is also what keeps the budget-free opening run from becoming an unbounded channel."
+    },
+    {
+      "id": "M-20",
+      "name": "events-ordered",
+      "text": "Event dates within an artifact do not decrease in file order, and no event date precedes the artifact's Opened date. An absent or malformed Opened is M-05's or M-21's violation and is passed over here; the ordering among event dates still binds."
+    },
+    {
+      "id": "M-21",
+      "name": "dates-well-formed",
+      "text": "Every field declaring date, and every event heading's date, carries a YYYY-MM-DD value naming a real calendar day."
+    },
+    {
+      "id": "M-22",
+      "name": "fields-carry-read-by",
+      "text": "Every declared field — opening-run or event-carried — carries a read_by list, and every rule the list names exists in this file. read_by names the rules that interpret the value; a check driven by a declaration key (required, values, date, min_length, closed_requires) is implied by the key and is never listed, and neither is a blanket rule that reads every value — M-17 and M-29, by house style. An empty list is the honest statement that no rule interprets the value beyond that standing machinery. Presence and resolution only: a field the implementation reads but the list omits is invisible to this rule."
+    },
+    {
+      "id": "M-23",
+      "name": "blocker-live",
+      "text": "An open Work item's Blocked by names no Work item whose derived status is closed. The rule reads every item of the value and fires on any closed Work named. Status is derived from the events, never read from the field; a reference that resolves to nothing is M-17's and is passed over here. Only Work IDs are matched, so a Decision named as a blocker is passed over too. Not transitive, and it imposes no ordering."
+    },
+    {
+      "id": "M-24",
+      "name": "artifact-link-text-is-the-id",
+      "text": "Where a markdown link's destination is an artifact, the link text is that artifact's ID — never a path, never prose. Closing the form rather than checking it, because a rule scoped to a syntactic form is only as complete as the record's consistency in that form. Prose link text stays free only where the destination is not an artifact, and a path pointing at a file that is not an artifact stays legal and is checked by M-18 instead. An artifact, to this rule, is what M-25's home-walk gathers; a destination outside every home is not an artifact here. Links from an immutable artifact — one whose type declares mutable false — are historical and are not checked."
+    },
+    {
+      "id": "M-25",
+      "name": "artifact-in-home",
+      "text": "An artifact's file lives under the home its type declares. Placement rather than identity, which is why it is not M-02. The ceiling: artifacts are gathered by walking the declared homes for .md files — a non-markdown file under a home is inert to every rule — so this catches a type sitting in another type's home and cannot see a file sitting in no home at all."
+    },
+    {
+      "id": "M-26",
+      "name": "context-sentinel",
+      "text": "No line of the file the context section names carries the declared sentinel — carries meaning contains, anywhere in the line — and a present file carries at least one non-blank line — a committed empty file is the sentinel with fewer characters. The check reads raw lines, masking being an artifact-parsing affordance, so the sentinel cannot be quoted in this file even inside code: a tripwire is not prose. The file is optional; a sentinel surviving into the tree is a form mistaken for a statement. File and sentinel are read from the context section, never hardcoded. An absent context section leaves this rule nothing to read and it passes over; a present section carries both keys or is M-28's violation — this rule never meets a malformed input."
+    },
+    {
+      "id": "M-27",
+      "name": "mirrors-agree",
+      "text": "Every value declaring a non-empty mirrors is recomposed from the named sources and compared for agreement; a non-empty mirrors whose asserted_by is absent or names no rule in this file is itself a violation. A source is named in the mirrors notation: a dotted path is the value at that path, keys(path) is the key set of the object there, union(path) is the union of the arrays a single * wildcard in the path collects. Recomposition is deterministic: sets keep this file's declaration order, deduplicated at first appearance; keys() compose into the literal's character class, union() into its alternation group, and a dotted-path source embeds with its anchors stripped — leading ^ and trailing $ — and is verified by containment: the literal carries the stripped text as a contiguous segment. Where the literal offers several candidate segments — an alternation candidate is any parenthesised group carrying a top-level |, capturing or not, and a class candidate any bracket character class, each ordered by its opening delimiter — the mirrored segment is the first, left to right, and sources of the same kind take segments in mirrors order. The rule verifies those segments against the sources; the fixed text around them is the literal's own. The literal is never trusted, only checked."
+    },
+    {
+      "id": "M-28",
+      "name": "event-maps-total",
+      "text": "Every key in a type's event_fields and optional_event_fields, and in status_derivation and transitions, is an event that type declares — or, in the derivation, the literal none. status_derivation and transitions are total over each type's declared events (the derivation also over none), and every type declaring a non-empty events appears in both: a missing map is vanished machinery, never an omission. The values are checked like the keys: every field name in event_fields, optional_event_fields and any closed_requires is a field the type declares; every state in a transitions list is a value that type's derivation produces; scope.field names a declared field; every declared field name matches the field grammar's label group as a whole value — a name the grammar cannot express is vanished machinery. The two field maps may be partial — an absent key requires nothing. Every key in a type declaration comes from the closed set name, home, mutable, events, event_fields, optional_event_fields, fields; every key in a field declaration from required, read_by, values, shape, date, min_length; every key in a values entry from closed_requires — an unknown declaration key is a violation, never prose. Spec self-consistency: the maps are functions over the declared sets, not copies of them. And the closed sets are file-wide: every top-level key comes from format, version, note, base, id, context, types, grammar, status_derivation, transitions, scope, limits, rules, parsing; every key in base from vcs, forge, note; in id from grammar, mirrors, asserted_by, note, filename; in context from file, sentinel, note — a present context section carrying file and sentinel both; in grammar from heading, field, event, event_prefix, date, each entry's keys from value, mirrors, asserted_by; in status_derivation and transitions, beyond note, only declared type letters; in scope from field, value, glob_dialect, and in glob_dialect from anchor, !<, **, *, ?, character_classes, braces, note; in limits from line_length, work_words, word; in a rules entry from id, name, text; in parsing from note, mask_code, field_values, bare_refs, links, field_position, cross_record_refs. An unknown key anywhere in this file is a violation, never prose — vanished machinery does not get a side door."
+    },
+    {
+      "id": "M-29",
+      "name": "no-self-reference",
+      "text": "No declared field's value names, bare, the artifact that carries it. The read is per item, after the whole-value strip — the strip decides, not the backticks: a wrapped self-name is the same loop (and a code-spanned ID in a field value is M-17's violation regardless). An Evidence superseding itself and an open Work blocked by itself are wrong the moment written — M-23 alone would pass a self-blocked Work forever, its blocker never closing. Body prose stays free to name its own artifact; the field channel is not, because a field edge that loops is no lineage."
+    },
+    {
+      "id": "M-30",
+      "name": "supersession-acyclic",
+      "text": "No Evidence reaches itself by following Supersedes values. A cycle of any length is wrong the moment its last member is written: artifacts each claiming to replace the other leave no measurement current, and a field edge that loops is no lineage whatever the loop's length — M-29 owns length one, this rule the rest. The walk follows resolving items only; an unresolved reference is M-17's and is passed over here. Deliberately Supersedes-only: a Blocked by cycle is a deadlock — an honest record of a real situation a human must break, needs-a-look, never wrong-at-write — and stays legal."
+    },
+    {
+      "id": "M-31",
+      "name": "no-invisible-ink",
+      "text": "The character sequence <!-- appears nowhere in an artifact's masked text. The record has no invisible ink: a comment renders as nothing while its interior parses at full strength, so the operative record and the rendered record could diverge — at the Ruling, catastrophically. Code is the opposite trade, visible and inert, and is the escape for quoting the sequence: a code-spanned or fenced <!-- masks away and is legal. Other raw HTML stays prose to this parser and renders at a renderer's discretion — the comment is the one construct every renderer hides, and the one banned."
+    }
+  ],
+  "parsing": {
+    "note": "Read structure from the raw line. Consult the masked line only to know whether that line lies inside code; reading structure from masked text destroys backticked field values. A line lying wholly inside code is blank after masking and is skipped for all structural matching — headings, fields and events included — so artifact syntax may be quoted safely inside a fence. This section states its own assertion: the four fixture shapes — a backticked field value, a reference-style link, an ID inside a fence, prose shaped like a field (an undeclared label; a declared one outside a run is M-19's tripwire) — are constructed as fixtures in the suite and are this section's teeth.",
+    "mask_code": "Fenced blocks and inline code spans are replaced with spaces before scanning links, bare ID references and bare web references, and never before matching headings, fields or events on a line that carries anything outside code. Fence delimiter lines mask with their blocks. An unclosed fence extends to the end of the file. A fence and a span are what CommonMark defines — backtick and tilde fences, info strings included, spans of any delimiter length — so the checker never disagrees with what renders as code, within a line. Two named deviations, both deliberate: indented code blocks are not code to this parser — fences and inline spans are the whole subset — and a span never crosses a line, though CommonMark's may: the record is line-oriented because its diffs are, and a construct whose meaning spans lines makes a one-line diff deceptive.",
+    "field_values": "A field's value is a single line: the field grammar is per-line, and the first non-field, non-blank line after a field run closes the run. There are no continuation lines — elaboration belongs in the body below the run. A value may be wrapped in backticks; wrapped means the entire value is a single code span, whatever its delimiter length — the span's opener is the value's first character and its closer ends at the value's last. A value carrying several spans is not wrapped and is stripped nowhere. The backticks of a wrap are not part of the value and are stripped before any reading, length included. A value is trimmed of surrounding whitespace before any reading, length included — and trimmed again after the strip: surrounding whitespace is never load-bearing, outside the wrap or inside it. A list-shaped value is split on commas outside code spans, each item trimmed, the whole-value strip then applying per item — M-14's globs, Under's, Blocked by's and Supersedes' IDs, and a closed_requires-named field's IDs read the items, never the joined line — and the blanket rules M-29 and M-30 read items wherever they read at all. A rule that reads a declared field's value reads the raw value, backticks stripped — except M-17's inspection, which reads the value as written; masking never applies to field values. Value comparison is exact, case included: the case rules are for labels alone.",
+    "bare_refs": "Bare ID references are found by tokenising the masked text into maximal runs of the characters the ID grammar admits — letters, digits, hyphens. A token is a reference exactly when the whole token matches the ID grammar; substrings are never tested. A prefix embedding is prose — the maximal run fails the anchor; a hyphen-suffix extension of a real ID is itself a whole-token match that resolves to nothing, and is red: adjectival use of an ID is written with a code span or reworded. A token that matches and resolves to nothing is a violation, never prose — demotion on failure would turn a typo into silence. One pass, no backtracking, no lookaround.",
+    "links": "Reference-style links are resolved against their definitions — all three CommonMark forms: full, collapsed, and shortcut; a bracketed token with no matching definition is not a link. A definition is not a link — only its uses are, and an unused definition's destination is read by nothing, a named ceiling. Angle-bracket destinations and link titles are handled. A link inside code is not a link. An image is a link to the rules that read destinations — M-01 and M-13 check it, so a dangling or external embedded image is red like any link — and no rule binds its alt text: M-18 and M-24 pass images over. A destination resolves against the directory of the file that carries the link — as a renderer resolves a click — and every rule's containment, existence and artifact test reads the resolved, repository-root-relative path; a #fragment strips before resolution. A destination beginning with / resolves from the repository root — the forge's reading, and the path vocabulary the rules already speak. Resolution succeeds only at a file: a directory destination does not resolve, and neither does a destination empty after the fragment strip. A destination carrying a URI scheme — matching ^[A-Za-z][A-Za-z0-9+.-]*: — is external; M-13 alone reads external links, and M-01, M-18 and M-24 pass them over.",
+    "field_position": "A field is recognised only inside the run of field lines that opens an artifact or an event block. A run begins at the first non-blank line after the artifact heading — to every rule, the file's first heading-grammar line; anything before it is body — or the event heading, if that line is a field line; otherwise that block's run is empty. A blank line inside a run neither closes it nor belongs to it: the run is contiguous over its non-blank lines, and the first non-field, non-blank line closes it. A field-shaped line outside such a run is prose where its label is undeclared — the grammar cannot tell a candidate header from a field. Where its label is a field name any type declares — compared case-insensitively — it is M-19's violation, never prose: quoting a field line is what fences are for. Inside a run the same comparison decides membership and duplicates; a case-mismatched declared label is recognised as its declaration, and the mismatch is M-19's violation. M-19 enforces the consequences.",
+    "cross_record_refs": "A reference to an artifact in another record is written in a code span, which is not a reference. This is the deliberate escape M-17 leaves open, and it exists in body prose only — a field value never carries it, so Forced by and Supersedes name artifacts of this record and nothing else. A forcing source outside this record is re-derived as this record's own Evidence, or it stays prose: what cannot be watched here is restated as something that can. A code-spanned ID is a trace, never an argument."
+  }
+}

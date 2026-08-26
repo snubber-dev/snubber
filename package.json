@@ -1,0 +1,38 @@
+{
+  "name": "snubber",
+  "version": "0.1.0",
+  "description": "Keeps settled things settled in a repository worked on with agents.",
+  "license": "MIT",
+  "author": "FelineFelon (https://github.com/FelineFelon)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@11.24.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snubber-dev/snubber.git"
+  },
+  "homepage": "https://snubber.dev",
+  "bugs": "https://github.com/snubber-dev/snubber/issues",
+  "bin": {
+    "snubber": "./dist/cli.js"
+  },
+  "exports": {},
+  "files": [
+    "dist",
+    "spec"
+  ],
+  "scripts": {
+    "check": "node src/cli.ts check",
+    "board": "node src/cli.ts board",
+    "rules": "node src/cli.ts rules",
+    "test": "node test/run.ts",
+    "prepublishOnly": "npm run build",
+    "build": "rm -rf dist && tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18",
+    "typescript": "^5.7.0"
+  }
+}
