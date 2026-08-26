@@ -69,6 +69,17 @@ const base = (extra: Record<string, string> = {}): Record<string, string> => ({
   ...extra,
 });
 
+const LONE_D = `# R-D-lone — Alone
+
+**Status.** \`open\`
+**Opened.** 2026-08-21
+**Settles when.** Something.
+
+## Question
+
+Nothing referenced.
+`;
+
 const cases: Case[] = [
   { name: "green base (backticked field values)", files: base(), expect: [] },
 
@@ -740,6 +751,58 @@ const cases: Case[] = [
     dirs: ["record/decisions/R-D-oops.md"],
     expectError: true,
     expect: [],
+  },
+
+  // The guess verdicts from the follow-up file, pinned. One guess died on
+  // contact: a code-spanned ID in a list field is red (M-17) and STILL an
+  // edge — the value is the ID, spanned illegally (R-D-values-cite-bare),
+  // so M-23 reads it. The prediction said no edge; the code says otherwise.
+  {
+    name: "M-02 + M-17: heading ID diverging from the stem, resolving to nothing",
+    files: base({ "record/decisions/R-D-first.md": D.replace("# R-D-first —", "# R-D-second —") }),
+    expect: ["M-02", "M-17"],
+  },
+  {
+    name: "a code-spanned ID in Blocked by is red and still an edge (M-17 + M-23)",
+    files: base({
+      "record/work/R-W-task.md": W({ fields: "**Blocked by.** `R-W-done`\n" }),
+      "record/work/R-W-done.md": W({
+        id: "R-W-done",
+        status: "closed",
+        events: `\n## Closed — 2026-08-21\n\n**Outcome.** Finished first.\n`,
+      }),
+    }),
+    expect: ["M-17", "M-23"],
+  },
+  {
+    name: "M-01: a destination empty after the fragment strip never resolves",
+    files: base({
+      "record/decisions/R-D-first.md": D + "\nSee [the same file](#question).\n",
+    }),
+    expect: ["M-01"],
+  },
+  {
+    name: "M-30: every member of a three-cycle reds, not the walk's entry alone",
+    files: base({
+      "record/evidence/R-E-one.md": E.replaceAll("R-E-seed", "R-E-one").replace("**Source.** Running the suite by hand.", "**Source.** By hand.\n**Supersedes.** R-E-two"),
+      "record/evidence/R-E-two.md": E.replaceAll("R-E-seed", "R-E-two").replace("**Source.** Running the suite by hand.", "**Source.** By hand.\n**Supersedes.** R-E-three"),
+      "record/evidence/R-E-three.md": E.replaceAll("R-E-seed", "R-E-three").replace("**Source.** Running the suite by hand.", "**Source.** By hand.\n**Supersedes.** R-E-one"),
+    }),
+    expect: ["M-30", "M-30", "M-30"],
+  },
+  {
+    name: "M-12's grace: one grammar-accepted artifact touching nothing is clean",
+    files: { "record/decisions/R-D-lone.md": LONE_D, "src/cli.ts": "x\n" },
+    expect: [],
+  },
+  {
+    name: "M-12's grace: an inert file is not a second artifact; the grace holds",
+    files: {
+      "record/decisions/R-D-lone.md": LONE_D,
+      "record/decisions/R-D-bad_name.md": "# R-D-bad_name — broken\n\nprose\n",
+      "src/cli.ts": "x\n",
+    },
+    expect: ["M-02"],
   },
 ];
 
