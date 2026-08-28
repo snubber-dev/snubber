@@ -24,8 +24,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
+      # The `test` script is the battery's one home; spelling the runs out
+      # here too would be a second copy to keep in step.
       - name: battery
-        run: node test/run.ts
+        run: npm test
       - name: build
         run: |
           # Node 25 dropped corepack from the distribution; install it first.
@@ -33,5 +35,13 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
           pnpm run build
+      # Both trees, after install because tsc lives there. The build compiles
+      # src only; test/ imports src and is checked nowhere else.
+      - name: typecheck
+        run: pnpm run typecheck
+      # The CLI battery again, against the emit a consumer installs — the
+      # dist target cannot run before this step, and never silently skips.
+      - name: shipped cli
+        run: node test/cli.ts dist
       - name: pack
         run: npm pack --dry-run

@@ -1,0 +1,17 @@
+// The build compiles src only — dist is what a consumer installs, and the
+// batteries are not part of it. Type checking has no such boundary: test/
+// imports src/ and is the only reader of several of its types, so an error
+// there is a real error. This config is the build's settings over both trees
+// with the emit turned off; tsconfig.json stays the one home for the settings
+// themselves.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ]
+}
