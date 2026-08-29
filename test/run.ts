@@ -3,54 +3,9 @@
 // shapes — a backticked field value, a reference-style link, an ID inside a
 // fence, prose shaped like a field — are constructed here as fixtures; this is
 // the parsing section's teeth.
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
-import { tmpdir } from "node:os";
-import { join, dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { rmSync } from "node:fs";
 import { check, ToolStop } from "../src/check.ts";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const SPEC = readFileSync(resolve(here, "..", "spec", "format.json"), "utf8");
-
-const D = `# R-D-first — The first decision
-
-**Status.** \`closed\`
-**Opened.** 2026-08-21
-
-## Question
-
-Does the checker check? [R-E-seed](../evidence/R-E-seed.md) suggests it must.
-
-## Closed — 2026-08-21
-
-**Ruling.** The checker checks.
-**Scope.** \`src/**\`, \`spec/format.json\`
-
-Argument prose here.
-`;
-
-const E = `# R-E-seed — A seed measurement
-
-**Grade.** \`measured\`
-**Recorded.** 2026-08-21
-**Source.** Running the suite by hand.
-
-The observation: R-D-first was checkable.
-`;
-
-const W = (over: Partial<{ id: string; kind: string; status: string; body: string; fields: string; events: string }> = {}) => {
-  const id = over.id ?? "R-W-task";
-  return `# ${id} — A task
-
-**Kind.** \`${over.kind ?? "build"}\`
-**Status.** \`${over.status ?? "open"}\`
-**Opened.** 2026-08-21
-**Done when.** It is done.
-${over.fields ?? ""}
-${over.body ?? `The work references [R-D-first](../decisions/R-D-first.md).`}
-${over.events ?? ""}`;
-};
+import { D, E, W, base, buildTree } from "./fixture.ts";
 
 type Case = {
   name: string;
@@ -61,13 +16,6 @@ type Case = {
   expectError?: boolean; // the checker stops rather than judging
   expect: string[];
 };
-
-const base = (extra: Record<string, string> = {}): Record<string, string> => ({
-  "record/decisions/R-D-first.md": D,
-  "record/evidence/R-E-seed.md": E,
-  "src/cli.ts": "x\n",
-  ...extra,
-});
 
 const LONE_D = `# R-D-lone — Alone
 
@@ -809,25 +757,8 @@ const cases: Case[] = [
 let failed = 0;
 let passed = 0;
 for (const c of cases) {
-  const root = mkdtempSync(join(tmpdir(), "snubber-test-"));
+  const root = buildTree(c);
   try {
-    // The repository is what git reports (R-D-present-not-ignored), so every
-    // fixture is a git repository; its files are untracked and not ignored,
-    // which the listing includes, so no commit is needed.
-    execFileSync("git", ["-C", root, "init", "-q"]);
-    mkdirSync(join(root, "spec"), { recursive: true });
-    if (c.rawSpec !== undefined) {
-      writeFileSync(join(root, "spec", "format.json"), c.rawSpec);
-    } else {
-      const spec = JSON.parse(SPEC);
-      if (c.spec) c.spec(spec);
-      writeFileSync(join(root, "spec", "format.json"), JSON.stringify(spec, null, 2));
-    }
-    for (const [rel, content] of Object.entries(c.files)) {
-      mkdirSync(join(root, dirname(rel)), { recursive: true });
-      writeFileSync(join(root, rel), content);
-    }
-    for (const rel of c.dirs ?? []) mkdirSync(join(root, rel), { recursive: true });
     if (c.expectError) {
       // A stop is a ToolStop with a message naming the remedy
       // (R-D-errors-name-remedy) — a raw crash is a failure, not a stop.
