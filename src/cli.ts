@@ -205,9 +205,106 @@ if ((cmd === "rules" || cmd === "board") && args.length > 1) {
   process.exit(2);
 }
 
+// The rule texts have two readers. Piped, the form is one rule per line —
+// id, name, text — which is what grep, awk and a diff read, and the form this
+// command has always emitted; wrapping there would break the record's own
+// rules across lines and cost a reader the thing a pipe is for. At a terminal
+// there is a width to lay the prose out to and a person on the other end, so
+// the same text is laid out instead. A terminal is what stdout reports;
+// SNUBBER_COLUMNS names a width where stdout cannot — a pager, a transcript,
+// this repository's own battery — and asks for the laid-out form by naming
+// one. Undefined is the answer that there is nothing to lay out to.
+//
+// A floor, because prose wrapped narrower than this is unreadable whatever the
+// window; a ceiling, because past a hundred columns a line stops being one a
+// reader can track back across.
+const FLOOR = 40;
+const CEILING = 100;
+
+function layoutWidth(): number | undefined {
+  const named = process.env.SNUBBER_COLUMNS;
+  // An empty value is how a shell unsets a variable for one command, not a
+  // width: it falls through to the terminal's answer.
+  if (named !== undefined && named !== "") {
+    // A width the tool cannot read, or will not lay out to, is an intention
+    // not honoured, and printing another form anyway would be the false
+    // success R-D-fail-closed forbids: the stop names the input and the way
+    // out (R-D-errors-name-remedy). Digits only — Number() would also read
+    // "1e2" and "0x28", forms the remedy never promised.
+    if (!/^[0-9]+$/.test(named)) {
+      console.error(`SNUBBER_COLUMNS is ${JSON.stringify(named)}, which names no width; give a whole number of columns, ${FLOOR} to ${CEILING}, or unset it to let the terminal answer`);
+      process.exit(2);
+    }
+    const n = Number(named);
+    if (n < FLOOR || n > CEILING) {
+      console.error(`SNUBBER_COLUMNS is ${named}, which is outside the measure prose lays out to; give a whole number of columns, ${FLOOR} to ${CEILING}, or unset it to let the terminal answer`);
+      process.exit(2);
+    }
+    return n;
+  }
+  if (process.stdout.isTTY !== true) return undefined;
+  const cols = process.stdout.columns;
+  // A terminal that reports no width is a terminal the tool cannot lay out
+  // for, not an error: the machine form is the honest fallback. And a width
+  // it does report is a window, not an intention, so it is drawn into the
+  // measure rather than refused.
+  return typeof cols === "number" && cols > 0 ? Math.max(FLOOR, Math.min(CEILING, cols)) : undefined;
+}
+
+function wrapTo(text: string, width: number, indent: string): string[] {
+  const lines: string[] = [];
+  let line = "";
+  let len = 0;
+  for (const word of text.split(/\s+/).filter((w) => w !== "")) {
+    // Both halves of the fit are measured in code points, as M-15 measures a
+    // line: .length is UTF-16 units, which counts a character outside the
+    // BMP twice and would call a line long that is not.
+    const w = [...word].length;
+    if (line === "") {
+      line = word;
+      len = w;
+    } else if (indent.length + len + 1 + w <= width) {
+      line += ` ${word}`;
+      len += 1 + w;
+    } else {
+      lines.push(indent + line);
+      line = word;
+      len = w;
+    }
+  }
+  // A word wider than the measure goes over it rather than being cut: a rule's
+  // words are the rule's.
+  if (line !== "") lines.push(indent + line);
+  return lines;
+}
+
 if (cmd === "rules") {
   adoptCarriedSpec();
-  for (const r of FORMAT.rules) console.log(`${r.id}  ${r.name.padEnd(28)} ${r.text}`);
+  const width = layoutWidth();
+  if (width === undefined) {
+    for (const r of FORMAT.rules) console.log(`${r.id}  ${r.name.padEnd(28)} ${r.text}`);
+    process.exit(0);
+  }
+  let first = true;
+  for (const r of FORMAT.rules) {
+    if (!first) console.log("");
+    first = false;
+    console.log(`${r.id}  ${r.name}`);
+    // A rule's first sentence is the rule; what follows draws its boundaries,
+    // names its ceilings and says why — the two set apart is the whole gain
+    // over the wall of text. The split is a reading aid and never a claim
+    // about the text: where no sentence end is found the text stays one
+    // paragraph, so a spec whose prose breaks the heuristic is laid out
+    // plainly, never misquoted.
+    const cut = /^(.*?[.?!])\s+(?=\S)/s.exec(r.text);
+    const statement = cut ? cut[1] ?? r.text : r.text;
+    const rest = cut ? r.text.slice(cut[0].length) : "";
+    for (const l of wrapTo(statement, width, "  ")) console.log(l);
+    if (rest !== "") {
+      console.log("");
+      for (const l of wrapTo(rest, width, "  ")) console.log(l);
+    }
+  }
   process.exit(0);
 }
 
