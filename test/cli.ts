@@ -14,17 +14,19 @@ import { existsSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { RULES } from "../src/rules/index.ts";
-import { D, base, buildTree, REPO, type Tree } from "./fixture.ts";
+import { D, SPEC, base, buildTree, REPO, type Tree } from "./fixture.ts";
 
 type CliCase = {
   name: string;
   args: string[];
   tree?: Tree; // defaults to a green base() tree
+  env?: Record<string, string>; // over the spawn environment
   exit: 0 | 1 | 2;
   out?: string; // exact stdout
   err?: string; // exact stderr
   outHas?: string[]; // substrings of stdout
   errHas?: string[]; // substrings of stderr — the remedy clauses
+  outWithin?: number; // every stdout line at most this many code points
 };
 
 // The fixture root is a fresh temp directory per case, so any message naming
@@ -38,6 +40,39 @@ const ROOT = "<ROOT>";
 // run reports every implementation and `--rule` reports the one that ran.
 const N_RULES = RULES.length;
 const N_ARTIFACTS = Object.keys(base()).filter((p) => p.endsWith(".md")).length;
+
+// The rules the two `rules` forms are quoted through, read from the spec the
+// fixture writes rather than copied into the case: a copy would go on
+// asserting a rule text the spec has since reworded. A rule the spec does not
+// declare is a case that cannot run, and a run of cases that did not run
+// reporting a pass is the false success R-D-fail-closed forbids.
+const specRules = (JSON.parse(SPEC) as { rules: { id: string; name: string; text: string }[] }).rules;
+const rule = (id: string) => {
+  const r = specRules.find((x) => x.id === id);
+  if (r === undefined) {
+    console.error(`the spec the fixture writes declares no ${id}, and the \`rules\` cases quote it; point them at a rule it declares`);
+    process.exit(2);
+  }
+  return r;
+};
+// M-03 for the forms themselves: its text is one short sentence, so the whole
+// of either form fits an assertion. M-01 for the break between a rule's
+// statement and the prose that draws its boundaries — the laid-out form's
+// whole gain, and a thing one sentence cannot show. At the ceiling M-01's
+// first sentence fits a single line, so the case can carry the break itself.
+const M3 = rule("M-03");
+const M1 = rule("M-01");
+// Where the battery expects that break to fall, stated here rather than
+// imported from the CLI: the case says where a reader expects the paragraph
+// to end, so a heuristic that moves breaks it loudly instead of agreeing with
+// itself.
+const M1_CUT = M1.text.indexOf(". ");
+if (M1_CUT < 0) {
+  console.error(`${M1.id}'s text carries no sentence end for the laid-out case to expect; quote a rule whose text does, or drop the case`);
+  process.exit(2);
+}
+const M1_STATEMENT = M1.text.slice(0, M1_CUT + 1);
+const M1_COMMENTARY = M1.text.slice(M1_CUT + 2).split(" ").slice(0, 4).join(" ");
 
 // The green base() tree with one field written below the body: M-19's
 // tripwire, and the smallest red a case can be. Derived from the one D the
@@ -145,12 +180,95 @@ const cases: CliCase[] = [
   },
 
   // ---- rules and board ----
+  // The two forms of `rules`. Piped — which is how the battery spawns it, and
+  // how a grep or a diff reads it — one rule per line, matched exactly: that
+  // line is the machine-shaped half of this command's contract. Given a width,
+  // the same rules laid out for a reader, which promises two things worth
+  // pinning: the id and name head their own line, and no line runs past the
+  // measure.
   {
-    name: "rules lists the interpreting spec's rules; exit 0",
+    name: "rules piped: the interpreting spec's rules, one per line; exit 0",
     args: ["rules"],
     exit: 0,
     err: "",
-    outHas: ["M-01", "M-19", "M-31"],
+    outHas: ["M-01", "M-19", "M-31", `\n${M3.id}  ${M3.name.padEnd(28)} ${M3.text}\n`],
+  },
+  {
+    name: "rules at a named width: laid out under its id, within the measure; exit 0",
+    args: ["rules"],
+    env: { SNUBBER_COLUMNS: "60" },
+    exit: 0,
+    err: "",
+    outHas: [`\n${M3.id}  ${M3.name}\n  ${M3.text}\n`],
+    outWithin: 60,
+  },
+  {
+    name: "rules with a width the tool cannot read: the input is named; exit 2",
+    args: ["rules"],
+    env: { SNUBBER_COLUMNS: "wide" },
+    exit: 2,
+    out: "",
+    err: `SNUBBER_COLUMNS is "wide", which names no width; give a whole number of columns, 40 to 100, or unset it to let the terminal answer\n`,
+    errHas: ["give a whole number of columns, 40 to 100"],
+  },
+  // A form Number() would happily read: the contract says digits, so
+  // scientific notation is an input the tool cannot read, not a hundred.
+  {
+    name: "rules with a width in a form the contract does not name: exit 2",
+    args: ["rules"],
+    env: { SNUBBER_COLUMNS: "1e2" },
+    exit: 2,
+    out: "",
+    errHas: ["names no width", "give a whole number of columns, 40 to 100"],
+  },
+  // The measure has a floor and a ceiling, and a named width is an intention:
+  // outside them the tool stops rather than quietly laying out to some other
+  // width. A terminal's reported width is a window, not an intention — that
+  // one is drawn in, and no case here can open a pty to pin it.
+  {
+    name: "rules below the floor of the measure: the range is named; exit 2",
+    args: ["rules"],
+    env: { SNUBBER_COLUMNS: "10" },
+    exit: 2,
+    out: "",
+    err: `SNUBBER_COLUMNS is 10, which is outside the measure prose lays out to; give a whole number of columns, 40 to 100, or unset it to let the terminal answer\n`,
+  },
+  {
+    name: "rules above the ceiling of the measure: the range is named; exit 2",
+    args: ["rules"],
+    env: { SNUBBER_COLUMNS: "120" },
+    exit: 2,
+    out: "",
+    errHas: ["give a whole number of columns, 40 to 100"],
+  },
+  {
+    name: "rules at the ceiling: the rule's statement, then its prose, as two paragraphs; exit 0",
+    args: ["rules"],
+    env: { SNUBBER_COLUMNS: "100" },
+    exit: 0,
+    err: "",
+    // No newline ahead of the id: M-01 heads the listing, and demanding one
+    // would be the case asserting the spec's rule order as well as the form.
+    outHas: [`${M1.id}  ${M1.name}\n  ${M1_STATEMENT}\n\n  ${M1_COMMENTARY}`],
+    outWithin: 100,
+  },
+  {
+    name: "rules at the floor itself: honoured, within the measure; exit 0",
+    args: ["rules"],
+    env: { SNUBBER_COLUMNS: "40" },
+    exit: 0,
+    err: "",
+    outWithin: 40,
+  },
+  // An empty value is how a shell unsets a variable for one command: no
+  // width named, and the pipe answers — the machine form.
+  {
+    name: "rules with an empty SNUBBER_COLUMNS: no width named, the pipe answers; exit 0",
+    args: ["rules"],
+    env: { SNUBBER_COLUMNS: "" },
+    exit: 0,
+    err: "",
+    outHas: [`\n${M3.id}  ${M3.name.padEnd(28)} ${M3.text}\n`],
   },
   {
     name: "board on a green tree: four sections, each with its count; exit 0",
@@ -289,7 +407,10 @@ for (const { name: t, entry } of runs) {
     const label = runs.length > 1 ? `[${t}] ${c.name}` : c.name;
     try {
       const r = spawnSync(process.execPath, [entry, ...c.args], {
-        env: { ...process.env, SNUBBER_ROOT: root },
+        // The knobs the cases assert are the cases' to set: a developer who
+        // has SNUBBER_COLUMNS in their own shell would otherwise be running a
+        // different battery than CI runs.
+        env: { ...process.env, SNUBBER_ROOT: root, SNUBBER_COLUMNS: undefined, ...c.env },
         encoding: "utf8",
       });
       const norm = (s: string) => s.split(root).join(ROOT);
@@ -302,6 +423,13 @@ for (const { name: t, entry } of runs) {
       if (c.err !== undefined && stderr !== c.err) bad.push(`stderr: expected ${JSON.stringify(c.err)}, got ${JSON.stringify(stderr)}`);
       for (const s of c.outHas ?? []) if (!stdout.includes(s)) bad.push(`stdout is missing ${JSON.stringify(s)}; got ${JSON.stringify(stdout)}`);
       for (const s of c.errHas ?? []) if (!stderr.includes(s)) bad.push(`stderr is missing ${JSON.stringify(s)}; got ${JSON.stringify(stderr)}`);
+      if (c.outWithin !== undefined) {
+        // Measured in code points, as M-15 measures a line: the rule texts
+        // carry em dashes, and a byte count would call a laid-out line long.
+        const within = c.outWithin;
+        const over = stdout.split("\n").filter((l) => [...l].length > within);
+        if (over.length > 0) bad.push(`stdout has ${over.length} line(s) over ${c.outWithin} columns; first is ${JSON.stringify(over[0])}`);
+      }
 
       if (bad.length === 0) passed++;
       else {

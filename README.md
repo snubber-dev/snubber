@@ -30,6 +30,14 @@ npx snubber rules           # every rule the checker implements
 The exit code is the whole external contract: `0` clean, `1` violations, `2` a tool error.
 Every error names what was not understood and the way out.
 
+`snubber rules` has two forms, because its texts have two readers. Piped, it prints one
+rule per line — id, name, text — which is what grep, awk and a diff read. At a terminal it
+lays the same texts out to the window's width: each rule's first sentence under its id,
+and the prose that draws the rule's boundaries as a second paragraph. `SNUBBER_COLUMNS`
+names a width where stdout cannot, so `SNUBBER_COLUMNS=42 npx snubber rules | less` reads
+the way the terminal does. The measure runs 40 to 100 columns: a named width outside it
+is an error, a terminal's is drawn in, and an empty value names no width at all.
+
 ## The GitHub Action
 
 `action.yml` runs the check on a pull request and posts the board to the step summary:
