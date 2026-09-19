@@ -44,7 +44,11 @@ runs:
     # it and the gate runs on a different Node on different days — a standing
     # question, named rather than hidden, reaching the one version this
     # repository declares.
-    - uses: actions/setup-node@v7
+    # Pinned to a commit, not a tag. This step runs inside a stranger's
+    # workflow, so the mutable-tag exposure would be one this action hands to
+    # its consumers rather than one it carries alone — the stricter pin is the
+    # only honest one here. The comment is the tag the SHA stood for.
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: ${{ steps.node.outputs.version }}
     - name: check
