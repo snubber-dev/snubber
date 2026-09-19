@@ -86,7 +86,12 @@ function listRepository(root: string): string[] {
     if (err.code === "ENOENT") {
       throw new ToolStop("git was not found; the repository is what git reports, so the checker needs git on PATH");
     }
-    const detail = (err.stderr ?? err.message ?? "").trim().split("\n")[0] ?? "";
+    // `||`, not `??`: git that fails without writing a line leaves stderr the
+    // empty string rather than undefined, and `??` keeps it — the error then
+    // names an empty cause while still prescribing git init, which is the one
+    // remedy it cannot have earned. Falling through to the spawn's own message
+    // says what actually happened.
+    const detail = (err.stderr || err.message || "").trim().split("\n")[0] ?? "";
     throw new ToolStop(`git cannot list ${root} (${detail}); the repository is what git reports, never a walk — run git init first`);
   }
   // A tracked path deleted from the working tree is reported by --cached and
