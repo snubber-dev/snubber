@@ -1,0 +1,22 @@
+# The other half of SHA-pinning. A pin with no update path freezes the
+# vulnerabilities along with the tree, so the pins and their bumps arrive
+# together or neither is worth having. Dependabot rewrites the SHA and the
+# trailing tag comment as one edit, which is what keeps a pin readable.
+#
+# One entry covers both homes: the github-actions ecosystem at the root reads
+# .github/workflows/*.yml and the composite action.yml beside it — the latter
+# being the action this repository ships, whose pins run in other people's
+# workflows and are therefore the ones least able to go stale quietly.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  # The devDependencies — typescript and @types/node — were watched by nothing
+  # before this entry. They are build-time only and never ship, dist/ being
+  # the emit and spec/ data, but tsc is what decides what that emit is.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly

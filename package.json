@@ -16,7 +16,7 @@
   "homepage": "https://snubber.dev",
   "bugs": "https://github.com/snubber-dev/snubber/issues",
   "bin": {
-    "snubber": "./dist/cli.js"
+    "snubber": "dist/cli.js"
   },
   "exports": {},
   "files": [
