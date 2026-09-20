@@ -14,7 +14,7 @@ import { existsSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { RULES } from "../src/rules/index.ts";
-import { D, SPEC, base, buildTree, REPO, type Tree } from "./fixture.ts";
+import { D, SPEC, W, base, buildTree, REPO, type Tree } from "./fixture.ts";
 
 type CliCase = {
   name: string;
@@ -27,6 +27,7 @@ type CliCase = {
   outHas?: string[]; // substrings of stdout
   errHas?: string[]; // substrings of stderr — the remedy clauses
   outWithin?: number; // every stdout line at most this many code points
+  outIds?: Record<string, string[]>; // section name (no count) → the exact IDs its rows carry, in order
 };
 
 // The fixture root is a fresh temp directory per case, so any message naming
@@ -81,6 +82,54 @@ const M1_COMMENTARY = M1.text.slice(M1_CUT + 2).split(" ").slice(0, 4).join(" ")
 const RED = D + "\n**Status.** `open`\n";
 const red = () => ({ files: base({ "record/decisions/R-D-first.md": RED }) });
 const empty = () => ({ files: {} });
+
+// ---- the board's trees ----
+// The green base() tree prints four `(0)` headers and no rows, so every row
+// the board can print is a shape only these trees reach. What each asserts is
+// the split the roadmap settled: the header lines exact (the counts and the
+// section names are contract), the IDs under each section exact (which
+// artifacts a section claims is the view's whole claim), and the row text by
+// `outHas` — the row is prose about an artifact, and prose stays rewordable.
+const decision = (over: Partial<{ id: string; title: string; status: string; events: string }> = {}) => {
+  const id = over.id ?? "R-D-open";
+  const title = over.title ?? " — An open question";
+  return `# ${id}${title}
+
+**Status.** \`${over.status ?? "open"}\`
+**Opened.** 2026-08-21
+
+## Question
+
+Does the board print it?
+${over.events ?? ""}`;
+};
+// A closing, with the Scope the case is about. The Ruling is the same
+// sentence every time: what these trees vary is the Scope and the gate.
+const closing = (scope: string) => `
+## Closed — 2026-08-22
+
+**Ruling.** The board reads this closing.
+**Scope.** ${scope}
+
+Argument prose here.
+`;
+const evidence = (id: string, grade: string, source: string) => `# ${id} — A graded measurement
+
+**Grade.** \`${grade}\`
+**Recorded.** 2026-08-21
+**Source.** ${source}
+
+The observation: the board read it.
+`;
+// Longer than the slice the Evidence row takes, so the row itself shows the
+// cut. Sliced here from the same constant the tree carries — a second copy,
+// cut by hand, would go on asserting a Source this file no longer writes.
+const LONG_SOURCE = "Running the suite by hand, on a machine whose description runs well past the measure a row gives it.";
+const SOURCE_SLICE = 78;
+if (LONG_SOURCE.length <= SOURCE_SLICE) {
+  console.error(`the board case's Source is ${LONG_SOURCE.length} characters and the row slices at ${SOURCE_SLICE}; lengthen it, or the case pins no cut`);
+  process.exit(2);
+}
 
 const cases: CliCase[] = [
   // ---- check: the three verdicts ----
@@ -277,6 +326,109 @@ const cases: CliCase[] = [
     err: "",
     out: "\nOpen questions (0)\n\nLeaned on and never verified (0 assumed, 0 reported)\n\nWork in flight (0)\n\nScope that does not hold (0)\n\n",
   },
+  // The row shapes, all three at once: a Decision and a Work item carry
+  // `  ID  title` with the ID stripped off the heading, and an Evidence row
+  // carries its Source instead — a different shape in the same list. The two
+  // Evidence grades are two numbers in one header and one concatenated list of
+  // rows, assumed before reported.
+  {
+    name: "board with rows: each section's IDs, and the three row shapes; exit 0",
+    args: ["board"],
+    tree: {
+      files: base({
+        "record/decisions/R-D-open.md": decision(),
+        // An ID-only heading: the strip takes the ID and the title is empty.
+        "record/decisions/R-D-bare.md": decision({ id: "R-D-bare", title: "" }),
+        "record/evidence/R-E-assumed.md": evidence("R-E-assumed", "assumed", LONG_SOURCE),
+        "record/evidence/R-E-reported.md": evidence("R-E-reported", "reported", "A note in the issue."),
+        "record/work/R-W-open.md": W({ id: "R-W-open" }),
+      }),
+    },
+    exit: 0,
+    err: "",
+    outHas: [
+      "\nOpen questions (2)\n",
+      "\nLeaned on and never verified (1 assumed, 1 reported)\n",
+      "\nWork in flight (1)\n",
+      "\nScope that does not hold (0)\n",
+      "\n  R-D-open  An open question\n",
+      "\n  R-D-bare  \n", // the empty title, and the two spaces still there
+      `\n  R-E-assumed  ${LONG_SOURCE.slice(0, SOURCE_SLICE)}\n`, // the cut, shown by the newline
+      "\n  R-W-open  A task\n",
+    ],
+    outIds: {
+      "Open questions": ["R-D-bare", "R-D-open"],
+      "Leaned on and never verified": ["R-E-assumed", "R-E-reported"],
+      "Work in flight": ["R-W-open"],
+      "Scope that does not hold": [],
+    },
+  },
+  // derive() is the board's whole claim: a closed Decision and a closed Work
+  // item are history, not a question and not work in flight. base()'s own
+  // R-D-first is the closed Decision. Today a board printing every artifact
+  // regardless of status passes the case above; it cannot pass this one.
+  {
+    name: "board on a tree of closed artifacts: every section empty; exit 0",
+    args: ["board"],
+    tree: {
+      files: base({
+        "record/work/R-W-done.md": W({
+          id: "R-W-done",
+          status: "closed",
+          events: "\n## Closed — 2026-08-22\n\n**Outcome.** The work was done.\n",
+        }),
+      }),
+    },
+    exit: 0,
+    err: "",
+    out: "\nOpen questions (0)\n\nLeaned on and never verified (0 assumed, 0 reported)\n\nWork in flight (0)\n\nScope that does not hold (0)\n\n",
+  },
+  // A stem the grammar rejects is inert and binds nothing further — including
+  // the board, which would otherwise read this file as an open Decision. The
+  // one assertion of `!a.inert` in either battery.
+  {
+    name: "board with an inert artifact: it is no section's row; exit 0",
+    args: ["board"],
+    tree: { files: base({ "record/decisions/R-D-not_an_id.md": decision({ id: "R-D-not_an_id" }) }) },
+    exit: 0,
+    err: "",
+    out: "\nOpen questions (0)\n\nLeaned on and never verified (0 assumed, 0 reported)\n\nWork in flight (0)\n\nScope that does not hold (0)\n\n",
+  },
+  // The section M-14's gate reports through. A Scope that holds prints
+  // nothing — base()'s R-D-first — and one that does not prints its glob,
+  // suffixed where the gate is still shut. The suffix is the pair's point:
+  // the roadmap's unclaimed-files view rewrites this region, and a row that
+  // moves should move visibly. The gate is opened the one way it opens: a
+  // closed Work item naming the Decision under Under.
+  {
+    name: "board with Scope that does not hold: the glob, and the gate in the suffix; exit 0",
+    args: ["board"],
+    tree: {
+      files: base({
+        "record/decisions/R-D-gated.md": decision({ id: "R-D-gated", status: "closed", events: closing("`src/nowhere/**`") }),
+        "record/decisions/R-D-ungated.md": decision({ id: "R-D-ungated", status: "closed", events: closing("`src/elsewhere/**`") }),
+        "record/work/R-W-gate.md": W({
+          id: "R-W-gate",
+          status: "closed",
+          fields: "**Under.** R-D-gated",
+          events: "\n## Closed — 2026-08-22\n\n**Outcome.** The gate was opened.\n",
+        }),
+      }),
+    },
+    exit: 0,
+    err: "",
+    outHas: [
+      "\nScope that does not hold (2)\n",
+      "\n  R-D-gated  src/nowhere/**\n", // the gate is open: M-14 already sees it
+      "\n  R-D-ungated  src/elsewhere/**  (gated — M-14 cannot see it yet)\n",
+    ],
+    outIds: {
+      "Open questions": [],
+      "Leaned on and never verified": [],
+      "Work in flight": [],
+      "Scope that does not hold": ["R-D-gated", "R-D-ungated"],
+    },
+  },
 
   // ---- init ----
   {
@@ -423,6 +575,32 @@ for (const { name: t, entry } of runs) {
       if (c.err !== undefined && stderr !== c.err) bad.push(`stderr: expected ${JSON.stringify(c.err)}, got ${JSON.stringify(stderr)}`);
       for (const s of c.outHas ?? []) if (!stdout.includes(s)) bad.push(`stdout is missing ${JSON.stringify(s)}; got ${JSON.stringify(stdout)}`);
       for (const s of c.errHas ?? []) if (!stderr.includes(s)) bad.push(`stderr is missing ${JSON.stringify(s)}; got ${JSON.stringify(stderr)}`);
+      // The board's sections, read back the way a reader reads them: an
+      // unindented line is a section and the indented lines under it are its
+      // rows, each row's first token its ID. What this pins is which
+      // artifacts a section claims — exactly, and in order — while the rest
+      // of the row stays prose for outHas to match by its parts. Its ceiling:
+      // it reads only the sections a case names, so a section the board grows
+      // is invisible here — the two `out`-exact board cases are what catch a
+      // new one, and a case naming every section keeps that cheap.
+      if (c.outIds !== undefined) {
+        const found = new Map<string, string[]>();
+        let rows: string[] | null = null;
+        for (const l of stdout.split("\n")) {
+          if (l === "") continue;
+          if (l.startsWith("  ")) {
+            if (rows !== null) rows.push(l.trim().split(/\s+/)[0] ?? "");
+            continue;
+          }
+          rows = [];
+          found.set(l.replace(/ \([^)]*\)$/, ""), rows);
+        }
+        for (const [section, ids] of Object.entries(c.outIds)) {
+          const got = found.get(section);
+          if (got === undefined) bad.push(`stdout carries no section ${JSON.stringify(section)}; got ${JSON.stringify(stdout)}`);
+          else if (got.join(", ") !== ids.join(", ")) bad.push(`section ${JSON.stringify(section)}: expected [${ids.join(", ")}], got [${got.join(", ")}]`);
+        }
+      }
       if (c.outWithin !== undefined) {
         // Measured in code points, as M-15 measures a line: the rule texts
         // carry em dashes, and a byte count would call a laid-out line long.
