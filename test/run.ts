@@ -1,10 +1,31 @@
 // The checker's own test battery: constructed fixture trees, one mistake per
-// case, asserting exactly which rules fire. The four measured false-positive
-// shapes — a backticked field value, a reference-style link, an ID inside a
-// fence, prose shaped like a field — are constructed here as fixtures; this is
-// the parsing section's teeth.
+// case, asserting exactly which rules fire and where. The four measured
+// false-positive shapes — a backticked field value, a reference-style link, an
+// ID inside a fence, prose shaped like a field — are constructed here as
+// fixtures; this is the parsing section's teeth.
+//
+// What a case asserts follows the CLI battery's split. A violation is
+// machine-shaped output, so it is matched exactly, and it is named the way the
+// tool itself renders one: `rule path` for a file-level red, `rule path:line`
+// where the rule carries a line. Sorted rule IDs alone were the old comparison,
+// and they let every `path:` in src/rules/ be wrong at once without a case
+// noticing — the location is half of what a red says and it was unasserted.
+// Which rules carry a line is pinned here as the code behaves, not as it
+// ideally would: a rule reporting file-level where a line was available is a
+// finding this comparison makes visible, and a change to src/rules/, never a
+// quiet edit to a case. The message stays out — it is prose, and a reword
+// should not cost a battery edit — so where one case expects the same rule at
+// the same place more than once, the count is asserted and which red is which
+// is not. Four cases sit at that ceiling.
+//
+// A stop is the checker declining to judge, and its message is human prose, so
+// a case names which stop it expects and matches the clause
+// R-D-errors-name-remedy makes non-negotiable — the remedy — plus the fragment
+// that identifies this stop among the others. The sentence around them stays
+// free to be improved without a battery edit.
 import { rmSync } from "node:fs";
-import { check, ToolStop } from "../src/check.ts";
+import { check, ToolStop, SpecUnreadable } from "../src/check.ts";
+import type { Violation } from "../src/rules/types.ts";
 import { D, E, W, base, buildTree } from "./fixture.ts";
 
 type Case = {
@@ -13,8 +34,11 @@ type Case = {
   spec?: (s: any) => void;
   rawSpec?: string; // verbatim spec file content, for the will-not-parse case
   dirs?: string[]; // directories created bare, for the unreadable-artifact case
-  expectError?: boolean; // the checker stops rather than judging
-  expect: string[];
+  // Exactly one of these. A judged case names every violation it expects; a
+  // stop case names the stop, and has no violations to name because the
+  // checker never got as far as a verdict.
+  expect?: string[];
+  stop?: { is: "ToolStop" | "SpecUnreadable"; has: string[] };
 };
 
 const LONE_D = `# R-D-lone — Alone
@@ -57,7 +81,7 @@ const cases: Case[] = [
     files: base({
       "record/decisions/R-D-first.md": D + "\n**Status.** \`open\`\n",
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-first.md:17"],
   },
 
   {
@@ -65,29 +89,34 @@ const cases: Case[] = [
     files: base({
       "record/decisions/R-D-first.md": D + "\nAnd [a note](missing.md) too.\n",
     }),
-    expect: ["M-01"],
+    expect: ["M-01 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-02: stem outside the grammar is one red and inert",
     files: base({ "record/decisions/R-D-bad_name.md": "# R-D-bad_name — broken\n\nprose\n" }),
-    expect: ["M-02"],
+    expect: ["M-02 record/decisions/R-D-bad_name.md"],
   },
   {
     name: "M-03 + M-25: same stem in another type's home",
     files: base({ "record/work/R-D-first.md": D }),
-    expect: ["M-03", "M-25"],
+    expect: ["M-03 record/work/R-D-first.md", "M-25 record/work/R-D-first.md"],
   },
   {
     name: "M-04: two heading lines",
     files: base({
       "record/decisions/R-D-first.md": D + "\n# R-D-first — again\n",
     }),
-    expect: ["M-04"],
+    expect: ["M-04 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-04 + M-05: no heading line at all",
     files: base({ "record/evidence/R-E-headless.md": "Prose only, but it cites [R-E-seed](R-E-seed.md).\n" }),
-    expect: ["M-04", "M-05", "M-05", "M-05"],
+    expect: [
+      "M-04 record/evidence/R-E-headless.md",
+      "M-05 record/evidence/R-E-headless.md",
+      "M-05 record/evidence/R-E-headless.md",
+      "M-05 record/evidence/R-E-headless.md",
+    ],
   },
 
   {
@@ -95,14 +124,14 @@ const cases: Case[] = [
     files: base({
       "record/evidence/R-E-seed.md": E.replace("**Grade.** `measured`\n", ""),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/evidence/R-E-seed.md"],
   },
   {
     name: "M-05: closing event missing Ruling",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Ruling.** The checker checks.\n", ""),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/decisions/R-D-first.md:10"],
   },
   {
     name: "M-05: probe closes without Probes",
@@ -113,7 +142,7 @@ const cases: Case[] = [
         events: `\n## Closed — 2026-08-21\n\n**Outcome.** Measured the thing.\n`,
       }),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/work/R-W-task.md:10"],
   },
   {
     name: "M-05: Probes carries neither IDs nor none",
@@ -124,14 +153,14 @@ const cases: Case[] = [
         events: `\n## Closed — 2026-08-21\n\n**Outcome.** Measured the thing.\n**Probes.** whatever\n`,
       }),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/work/R-W-task.md:10"],
   },
   {
     name: "M-05: Ruling under min_length",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Ruling.** The checker checks.", "**Ruling.** ok"),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/decisions/R-D-first.md:10"],
   },
   {
     name: "M-05 merged red: the block misplaced its run",
@@ -141,7 +170,7 @@ const cases: Case[] = [
         "## Closed — 2026-08-21\n\nSome prose first.\n\n**Ruling.** The checker checks.\n**Scope.** `src/**`",
       ),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/decisions/R-D-first.md:10"],
   },
 
   {
@@ -149,14 +178,14 @@ const cases: Case[] = [
     files: base({
       "record/evidence/R-E-seed.md": E.replace("`measured`", "`wild`"),
     }),
-    expect: ["M-06"],
+    expect: ["M-06 record/evidence/R-E-seed.md"],
   },
   {
     name: "M-07: Status disagrees with the events",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Status.** `closed`", "**Status.** `open`"),
     }),
-    expect: ["M-07"],
+    expect: ["M-07 record/decisions/R-D-first.md"],
   },
   {
     name: "M-08: event heading near-miss",
@@ -164,7 +193,7 @@ const cases: Case[] = [
       "record/decisions/R-D-first.md": D.replace("**Status.** `closed`", "**Status.** `open`")
         .replace("## Closed — 2026-08-21\n\n**Ruling.** The checker checks.\n**Scope.** `src/**`, `spec/format.json`\n", "## Closed — yesterday\n"),
     }),
-    expect: ["M-08"],
+    expect: ["M-08 record/decisions/R-D-first.md:10"],
   },
   {
     name: "M-09: second Closed is illegal from closed",
@@ -174,7 +203,7 @@ const cases: Case[] = [
         events: `\n## Closed — 2026-08-21\n\n**Outcome.** Did the thing.\n\n## Closed — 2026-08-21\n\n**Outcome.** Did it again.\n`,
       }),
     }),
-    expect: ["M-09"],
+    expect: ["M-09 record/work/R-W-task.md:14"],
   },
 
   {
@@ -182,28 +211,28 @@ const cases: Case[] = [
     files: base({
       "record/work/R-W-alone.md": W({ id: "R-W-alone", body: "No references at all.\n" }),
     }),
-    expect: ["M-12"],
+    expect: ["M-12 record/work/R-W-alone.md"],
   },
   {
     name: "M-13: external link",
     files: base({
       "record/decisions/R-D-first.md": D + "\nSee [the docs](https://example.com/docs).\n",
     }),
-    expect: ["M-13"],
+    expect: ["M-13 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-13: bare web reference",
     files: base({
       "record/decisions/R-D-first.md": D + "\nSee https://example.com/docs for this.\n",
     }),
-    expect: ["M-13"],
+    expect: ["M-13 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-13: link outside record/ does not resolve",
     files: base({
       "record/decisions/R-D-first.md": D + "\nAnd [x](../../src/nope.ts) too.\n",
     }),
-    expect: ["M-13"],
+    expect: ["M-13 record/decisions/R-D-first.md:17"],
   },
 
   {
@@ -216,7 +245,7 @@ const cases: Case[] = [
         events: `\n## Closed — 2026-08-21\n\n**Outcome.** Implemented it.\n`,
       }),
     }),
-    expect: ["M-14"],
+    expect: ["M-14 record/decisions/R-D-first.md:10"],
   },
   {
     name: "M-14: absent-glob still matches",
@@ -228,7 +257,7 @@ const cases: Case[] = [
         events: `\n## Closed — 2026-08-21\n\n**Outcome.** Implemented it.\n`,
       }),
     }),
-    expect: ["M-14"],
+    expect: ["M-14 record/decisions/R-D-first.md:10"],
   },
   {
     name: "M-14: ungated is a report, not a violation",
@@ -243,7 +272,7 @@ const cases: Case[] = [
     files: base({
       "record/decisions/R-D-first.md": D + "\n" + "x".repeat(301) + "\n",
     }),
-    expect: ["M-15"],
+    expect: ["M-15 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-15: a fenced long line is exempt",
@@ -257,7 +286,7 @@ const cases: Case[] = [
     files: base({
       "record/work/R-W-task.md": W({ body: "[R-D-first](../decisions/R-D-first.md)\n" + "word word word word word\n".repeat(60) }),
     }),
-    expect: ["M-16"],
+    expect: ["M-16 record/work/R-W-task.md"],
   },
 
   {
@@ -265,14 +294,14 @@ const cases: Case[] = [
     files: base({
       "record/decisions/R-D-first.md": D + "\nAlso R-E-nothere is cited.\n",
     }),
-    expect: ["M-17"],
+    expect: ["M-17 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-17: code-spanned ID inside a field value",
     files: base({
       "record/evidence/R-E-seed.md": E.replace("**Source.** Running the suite by hand.", "**Source.** `R-D-first`"),
     }),
-    expect: ["M-17"],
+    expect: ["M-17 record/evidence/R-E-seed.md:5"],
   },
 
   {
@@ -281,7 +310,7 @@ const cases: Case[] = [
       "notes.md": "notes\n",
       "record/decisions/R-D-first.md": D + "\nAnd [R-E-seed](../../notes.md).\n",
     }),
-    expect: ["M-18"],
+    expect: ["M-18 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-18: path text disagreeing with the destination",
@@ -290,14 +319,14 @@ const cases: Case[] = [
       "other.md": "other\n",
       "record/decisions/R-D-first.md": D + "\nAnd [notes.md](../../other.md).\n",
     }),
-    expect: ["M-18"],
+    expect: ["M-18 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-24: prose text on an artifact destination",
     files: base({
       "record/decisions/R-D-first.md": D + "\nAnd [see here](../evidence/R-E-seed.md).\n",
     }),
-    expect: ["M-24"],
+    expect: ["M-24 record/decisions/R-D-first.md:17"],
   },
 
   {
@@ -305,28 +334,28 @@ const cases: Case[] = [
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Opened.** 2026-08-21", "**Opened.** 2026-08-21\n**Opened.** 2026-08-20"),
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-first.md:5"],
   },
   {
     name: "M-19: case-mismatched label",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Status.**", "**status.**"),
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-first.md:3"],
   },
   {
     name: "M-19: event field in the opening run",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Opened.** 2026-08-21", "**Opened.** 2026-08-21\n**Ruling.** Placed too early."),
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-first.md:5"],
   },
   {
     name: "M-19: undeclared key inside the run",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Opened.** 2026-08-21", "**Opened.** 2026-08-21\n**Wild.** A stowaway."),
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-first.md:5"],
   },
   {
     name: "M-19: another type's field inside an event block",
@@ -336,7 +365,7 @@ const cases: Case[] = [
         events: `\n## Closed — 2026-08-21\n\n**Outcome.** Did the thing.\n**Done when.** Misplaced.\n`,
       }),
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/work/R-W-task.md:13"],
   },
 
   {
@@ -344,14 +373,14 @@ const cases: Case[] = [
     files: base({
       "record/decisions/R-D-first.md": D.replace("## Closed — 2026-08-21", "## Closed — 2026-08-20"),
     }),
-    expect: ["M-20"],
+    expect: ["M-20 record/decisions/R-D-first.md:10"],
   },
   {
     name: "M-21: a shape that is not a day",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Opened.** 2026-08-21", "**Opened.** 2026-02-30"),
     }),
-    expect: ["M-21"],
+    expect: ["M-21 record/decisions/R-D-first.md"],
   },
 
   {
@@ -364,7 +393,7 @@ const cases: Case[] = [
         events: `\n## Closed — 2026-08-21\n\n**Outcome.** Finished first.\n`,
       }),
     }),
-    expect: ["M-23"],
+    expect: ["M-23 record/work/R-W-task.md:7"],
   },
 
   {
@@ -372,7 +401,7 @@ const cases: Case[] = [
     files: base({
       "record/evidence/R-E-seed.md": E.replace("**Source.** Running the suite by hand.", "**Source.** Running the suite by hand.\n**Supersedes.** R-E-seed"),
     }),
-    expect: ["M-29"],
+    expect: ["M-29 record/evidence/R-E-seed.md:6"],
   },
   {
     name: "M-30: a supersession cycle",
@@ -380,14 +409,14 @@ const cases: Case[] = [
       "record/evidence/R-E-one.md": E.replace("R-E-seed", "R-E-one").replace("**Source.** Running the suite by hand.", "**Source.** By hand.\n**Supersedes.** R-E-two"),
       "record/evidence/R-E-two.md": E.replace("R-E-seed", "R-E-two").replace("**Source.** Running the suite by hand.", "**Source.** By hand.\n**Supersedes.** R-E-one"),
     }),
-    expect: ["M-30", "M-30"],
+    expect: ["M-30 record/evidence/R-E-one.md", "M-30 record/evidence/R-E-two.md"],
   },
   {
     name: "M-31: a comment in the masked text",
     files: base({
       "record/decisions/R-D-first.md": D + "\n<!-- invisible ink -->\n",
     }),
-    expect: ["M-31"],
+    expect: ["M-31 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-31: a fenced comment is legal",
@@ -400,31 +429,31 @@ const cases: Case[] = [
   {
     name: "M-26: the sentinel survives",
     files: base({ "record/context.md": "What this is.\n<!-- snubber:unfilled -->\n" }),
-    expect: ["M-26"],
+    expect: ["M-26 record/context.md:2"],
   },
   {
     name: "M-26: a committed empty context file",
     files: base({ "record/context.md": "\n\n" }),
-    expect: ["M-26"],
+    expect: ["M-26 record/context.md"],
   },
 
   {
     name: "M-22: a field without read_by",
     files: base(),
     spec: (s) => { delete s.types.E.fields.Grade.read_by; },
-    expect: ["M-22"],
+    expect: ["M-22 spec/format.json"],
   },
   {
     name: "M-22: read_by naming a rule that is not here",
     files: base(),
     spec: (s) => { s.types.E.fields.Grade.read_by = ["M-99"]; },
-    expect: ["M-22"],
+    expect: ["M-22 spec/format.json"],
   },
   {
     name: "M-27: a mirror out of agreement",
     files: base(),
     spec: (s) => { s.grammar.event.value = s.grammar.event.value.replace("Closed|Reopened|Re-closed", "Closed|Re-closed|Reopened"); },
-    expect: ["M-27"],
+    expect: ["M-27 spec/format.json"],
   },
   {
     name: "M-27: a missing asserted_by does not hide a disagreeing literal",
@@ -433,7 +462,7 @@ const cases: Case[] = [
       delete s.grammar.event.asserted_by;
       s.grammar.event.value = s.grammar.event.value.replace("Closed|Reopened|Re-closed", "Closed|Re-closed|Reopened");
     },
-    expect: ["M-27", "M-27"],
+    expect: ["M-27 spec/format.json", "M-27 spec/format.json"],
   },
   {
     name: "M-14: a reopened Decision's stale Scope is the board's, not M-14's",
@@ -452,7 +481,7 @@ const cases: Case[] = [
   {
     name: "M-08: an event near-miss above the heading is still an error",
     files: base({ "record/decisions/R-D-first.md": "## Closed - 2026-08-21\n\n" + D }),
-    expect: ["M-08"],
+    expect: ["M-08 record/decisions/R-D-first.md:1"],
   },
   {
     name: "a well-formed event above the heading is body (parsing.field_position)",
@@ -463,19 +492,19 @@ const cases: Case[] = [
     name: "M-28: an unknown top-level key",
     files: base(),
     spec: (s) => { s.extra = true; },
-    expect: ["M-28"],
+    expect: ["M-28 spec/format.json"],
   },
   {
     name: "M-28: vanished transitions",
     files: base(),
     spec: (s) => { delete s.transitions.W; },
-    expect: ["M-28"],
+    expect: ["M-28 spec/format.json"],
   },
   {
     name: "M-28: an event map keyed by an undeclared event",
     files: base(),
     spec: (s) => { s.types.W.event_fields.Withdrawn = ["Outcome"]; },
-    expect: ["M-28"],
+    expect: ["M-28 spec/format.json"],
   },
 
   // --- regression cases from the pre-commit review ---
@@ -485,7 +514,7 @@ const cases: Case[] = [
       "record/decisions/R-D-blocked.md": `# R-D-blocked — Blocked-looking\n\n**Status.** \`open\`\n**Opened.** 2026-08-21\n**Blocked by.** R-D-done\n\nprose\n`,
       "record/decisions/R-D-done.md": `# R-D-done — Done\n\n**Status.** \`closed\`\n**Opened.** 2026-08-21\n\nIt cites R-D-blocked.\n\n## Closed — 2026-08-21\n\n**Ruling.** It is done here.\n**Scope.** \`none\`\n`,
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-blocked.md:5"],
   },
   {
     name: "M-30 stays off non-Evidence Supersedes",
@@ -493,7 +522,7 @@ const cases: Case[] = [
       "record/decisions/R-D-s1.md": `# R-D-s1 — One\n\n**Status.** \`open\`\n**Opened.** 2026-08-21\n**Supersedes.** R-D-s2\n\nprose\n`,
       "record/decisions/R-D-s2.md": `# R-D-s2 — Two\n\n**Status.** \`open\`\n**Opened.** 2026-08-21\n**Supersedes.** R-D-s1\n\nprose\n`,
     }),
-    expect: ["M-19", "M-19"],
+    expect: ["M-19 record/decisions/R-D-s1.md:5", "M-19 record/decisions/R-D-s2.md:5"],
   },
   {
     name: "M-14 gate ignores a closed Decision's stray Under",
@@ -501,42 +530,48 @@ const cases: Case[] = [
       "record/decisions/R-D-first.md": D.replace("`src/**`, `spec/format.json`", "`nope/**`"),
       "record/decisions/R-D-gate.md": `# R-D-gate — Gate-looking\n\n**Status.** \`closed\`\n**Opened.** 2026-08-21\n**Under.** R-D-first\n\nprose\n\n## Closed — 2026-08-21\n\n**Ruling.** It gates nothing.\n**Scope.** \`none\`\n`,
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-gate.md:5"],
   },
   {
     name: "M-19: declared label before the heading is still the tripwire",
     files: base({
       "record/decisions/R-D-first.md": "**Ruling.** too early\n\n" + D,
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-first.md:1"],
   },
   {
     name: "M-16: body before the heading still counts",
     files: base({
       "record/work/R-W-task.md": "word word word word word\n".repeat(62) + "\n" + W({}),
     }),
-    expect: ["M-16"],
+    expect: ["M-16 record/work/R-W-task.md"],
   },
   {
     name: "M-08 near-miss closes the field run",
     files: base({
       "record/work/R-W-task.md": `# R-W-task — A task\n\n**Kind.** \`build\`\n**Status.** \`open\`\n## Closed x\n**Opened.** 2026-08-21\n**Done when.** It is done.\n\n[R-D-first](../decisions/R-D-first.md)\n`,
     }),
-    expect: ["M-05", "M-05", "M-08", "M-19", "M-19"],
+    expect: [
+      "M-05 record/work/R-W-task.md",
+      "M-05 record/work/R-W-task.md",
+      "M-08 record/work/R-W-task.md:5",
+      "M-19 record/work/R-W-task.md:6",
+      "M-19 record/work/R-W-task.md:7",
+    ],
   },
   {
     name: "a trailing-space label is not the declared field",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Status.**", "**Status .**"),
     }),
-    expect: ["M-05", "M-19"],
+    expect: ["M-05 record/decisions/R-D-first.md", "M-19 record/decisions/R-D-first.md:3"],
   },
   {
     name: "min_length counts code points",
     files: base({
       "record/decisions/R-D-first.md": D.replace("**Ruling.** The checker checks.", "**Ruling.** \u{1D11E}\u{1D11E}"),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/decisions/R-D-first.md:10"],
   },
   {
     name: "a fence inside the opening run closes it: the body has started",
@@ -546,7 +581,7 @@ const cases: Case[] = [
         "\n```\n**Status.** `open`\n```\n\n**Opened.** 2026-08-21",
       ),
     }),
-    expect: ["M-05", "M-19"],
+    expect: ["M-05 record/decisions/R-D-first.md", "M-19 record/decisions/R-D-first.md:9"],
   },
   {
     name: "a duplicate key reds once; readers see the first value",
@@ -556,7 +591,7 @@ const cases: Case[] = [
         "**Status.** `closed`\n**Status.** `open`",
       ),
     }),
-    expect: ["M-19"],
+    expect: ["M-19 record/decisions/R-D-first.md:4"],
   },
   {
     name: "misplaced run: one merged red forgives every line legal in that run",
@@ -566,7 +601,7 @@ const cases: Case[] = [
         "## Closed — 2026-08-21\n\nArgument prose here.\n\n**Ruling.** The checker checks.\n**Scope.** `src/**`, `spec/format.json`\n**Forced by.** R-E-seed\n",
       ),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/decisions/R-D-first.md:10"],
   },
   {
     name: "a misplaced optional alone triggers no merge; absences red individually",
@@ -576,7 +611,11 @@ const cases: Case[] = [
         "## Closed — 2026-08-21\n\nArgument prose here.\n\n**Forced by.** R-E-seed\n",
       ),
     }),
-    expect: ["M-05", "M-05", "M-19"],
+    expect: [
+      "M-05 record/decisions/R-D-first.md:10",
+      "M-05 record/decisions/R-D-first.md:10",
+      "M-19 record/decisions/R-D-first.md:14",
+    ],
   },
   {
     name: "the pass-over forgives declared closing names the values never imposed",
@@ -586,7 +625,7 @@ const cases: Case[] = [
         events: "\n## Closed — 2026-08-21\n\nWrapped it up.\n\n**Outcome.** `shipped`\n**Probes.** R-E-seed\n",
       }),
     }),
-    expect: ["M-05"],
+    expect: ["M-05 record/work/R-W-task.md:10"],
   },
   {
     name: "the pass-over never forgives a label illegal in that run anyway",
@@ -596,49 +635,61 @@ const cases: Case[] = [
         events: "\n## Closed — 2026-08-21\n\nWrapped it up.\n\n**Outcome.** `shipped`\n**Probes.** R-E-seed\n**Done when.** Again.\n",
       }),
     }),
-    expect: ["M-05", "M-19"],
+    expect: ["M-05 record/work/R-W-task.md:10", "M-19 record/work/R-W-task.md:16"],
   },
   {
     name: "a carried spec that will not parse stops the checker",
     files: base(),
     rawSpec: "{broken",
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "SpecUnreadable",
+      has: ["spec/format.json does not parse", "the checker has nothing to interpret"],
+    },
   },
   {
     name: "a carried grammar the parser cannot read stops the checker",
     files: base(),
     spec: (s) => { s.grammar.field.value = "^\\*\\*\\S[^.]*\\.\\*\\* \\S.*$"; },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "SpecUnreadable",
+      has: ["grammar.field captures 0 group(s) where the parser reads 2", "the checker has nothing to interpret"],
+    },
   },
   {
     name: "a carried grammar that does not compile stops the checker",
     files: base(),
     spec: (s) => { s.grammar.heading.value = "(unclosed"; },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "SpecUnreadable",
+      has: ["grammar.heading does not compile as a regular expression", "the checker has nothing to interpret"],
+    },
   },
   {
     name: "a carried limit that is not a number stops the checker",
     files: base(),
     spec: (s) => { s.limits.line_length = "x"; },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "SpecUnreadable",
+      has: ["limits.line_length is not a number", "restore it from a known-good copy"],
+    },
   },
   {
     name: "a carried field declaration that is null stops the checker",
     files: base(),
     spec: (s) => { s.types.D.fields.Status = null; },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "SpecUnreadable",
+      has: ["types.D.fields.Status is not an object", "restore it from a known-good copy"],
+    },
   },
   {
     name: "carried rules that are not a list stop the checker",
     files: base(),
     spec: (s) => { s.rules = null; },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "SpecUnreadable",
+      has: ["rules is not an array", "restore it from a known-good copy"],
+    },
   },
   {
     name: "a nested group in the field label reads by balance — legal names pass, no crash",
@@ -653,21 +704,25 @@ const cases: Case[] = [
       s.grammar.field.value = "^\\*\\*((?:[A-Za-z][A-Za-z ]*))\\.\\*\\* (.+)$";
       s.types.D.fields["Bad_Name"] = { read_by: [] };
     },
-    expect: ["M-28"],
+    expect: ["M-28 spec/format.json"],
   },
   {
     name: "a declared home that is a file stops the checker",
     files: base(),
     spec: (s) => { s.types.W.home = "src/cli.ts"; },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "ToolStop",
+      has: ["types.W.home (src/cli.ts) cannot be read as a directory", "fix the declared home or the tree"],
+    },
   },
   {
     name: "a context.file that is a directory stops the checker",
     files: base(),
     spec: (s) => { s.context.file = "record"; },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "ToolStop",
+      has: ["context.file (record) cannot be read as a file", "fix the declared path or the tree"],
+    },
   },
   {
     name: "the carried copy is the one interpreted (M-26 sentinel)",
@@ -679,26 +734,32 @@ const cases: Case[] = [
     name: "the carried copy's sentinel fires",
     files: base({ "record/context.md": "What this is.\nXYZ-NEVER\n" }),
     spec: (s) => { s.context.sentinel = "XYZ-NEVER"; },
-    expect: ["M-26"],
+    expect: ["M-26 record/context.md:2"],
   },
   {
     name: "no record at all stops the checker, naming init",
     files: { "src/cli.ts": "x\n" },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "ToolStop",
+      has: ["no declared home exists", "run snubber init"],
+    },
   },
   {
     name: "homes that exist and hold nothing stop the checker, naming what to write",
     files: { "src/cli.ts": "x\n", "record/decisions/.gitkeep": "" },
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "ToolStop",
+      has: ["record/decisions/ exists but holds no .md file", "seed a fresh tree with snubber init"],
+    },
   },
   {
     name: "an .md name that is not a readable file stops the checker, naming the path",
     files: base(),
     dirs: ["record/decisions/R-D-oops.md"],
-    expectError: true,
-    expect: [],
+    stop: {
+      is: "ToolStop",
+      has: ["record/decisions/R-D-oops.md cannot be read as a file", "move it out of record/decisions/"],
+    },
   },
 
   // The guess verdicts from the follow-up file, pinned. One guess died on
@@ -708,7 +769,7 @@ const cases: Case[] = [
   {
     name: "M-02 + M-17: heading ID diverging from the stem, resolving to nothing",
     files: base({ "record/decisions/R-D-first.md": D.replace("# R-D-first —", "# R-D-second —") }),
-    expect: ["M-02", "M-17"],
+    expect: ["M-02 record/decisions/R-D-first.md:1", "M-17 record/decisions/R-D-first.md:1"],
   },
   {
     name: "a code-spanned ID in Blocked by is red and still an edge (M-17 + M-23)",
@@ -720,14 +781,14 @@ const cases: Case[] = [
         events: `\n## Closed — 2026-08-21\n\n**Outcome.** Finished first.\n`,
       }),
     }),
-    expect: ["M-17", "M-23"],
+    expect: ["M-17 record/work/R-W-task.md:7", "M-23 record/work/R-W-task.md:7"],
   },
   {
     name: "M-01: a destination empty after the fragment strip never resolves",
     files: base({
       "record/decisions/R-D-first.md": D + "\nSee [the same file](#question).\n",
     }),
-    expect: ["M-01"],
+    expect: ["M-01 record/decisions/R-D-first.md:17"],
   },
   {
     name: "M-30: every member of a three-cycle reds, not the walk's entry alone",
@@ -736,7 +797,7 @@ const cases: Case[] = [
       "record/evidence/R-E-two.md": E.replaceAll("R-E-seed", "R-E-two").replace("**Source.** Running the suite by hand.", "**Source.** By hand.\n**Supersedes.** R-E-three"),
       "record/evidence/R-E-three.md": E.replaceAll("R-E-seed", "R-E-three").replace("**Source.** Running the suite by hand.", "**Source.** By hand.\n**Supersedes.** R-E-one"),
     }),
-    expect: ["M-30", "M-30", "M-30"],
+    expect: ["M-30 record/evidence/R-E-one.md", "M-30 record/evidence/R-E-three.md", "M-30 record/evidence/R-E-two.md"],
   },
   {
     name: "M-12's grace: one grammar-accepted artifact touching nothing is clean",
@@ -750,39 +811,81 @@ const cases: Case[] = [
       "record/decisions/R-D-bad_name.md": "# R-D-bad_name — broken\n\nprose\n",
       "src/cli.ts": "x\n",
     },
-    expect: ["M-02"],
+    expect: ["M-02 record/decisions/R-D-bad_name.md"],
   },
 ];
 
+// The two classes the checker stops with. SpecUnreadable extends ToolStop, so
+// a case naming the base class asserts the subclass did NOT fire — otherwise
+// "ToolStop" would be satisfied by every stop there is, and naming one would
+// say nothing.
+const STOPS = { ToolStop, SpecUnreadable };
+
+// A violation rendered the way the CLI renders it, minus the message: the two
+// instruments agree on what a red's location is, including that a missing line
+// prints as nothing rather than as an absent number.
+const at = (v: Violation) => `${v.rule} ${v.path}${v.line ? ":" + v.line : ""}`;
+
+// A case declaring neither expectation cannot run, and a run of cases that did
+// not run reporting a pass is the false success R-D-fail-closed forbids.
+for (const c of cases) {
+  if ((c.expect === undefined) === (c.stop === undefined)) {
+    console.error(`case "${c.name}" must declare exactly one of expect and stop`);
+    process.exit(2);
+  }
+}
+
 let failed = 0;
 let passed = 0;
+const fail = (name: string, lines: string[]) => {
+  failed++;
+  console.log(`FAIL  ${name}`);
+  for (const l of lines) console.log(`  ${l}`);
+};
+
 for (const c of cases) {
   const root = buildTree(c);
   try {
-    if (c.expectError) {
-      // A stop is a ToolStop with a message naming the remedy
-      // (R-D-errors-name-remedy) — a raw crash is a failure, not a stop.
-      let outcome = "judged";
+    if (c.stop) {
+      let thrown: unknown;
+      let judged = false;
       try {
         check(root);
+        judged = true;
       } catch (e) {
-        outcome = e instanceof ToolStop ? "stopped" : `crashed: ${(e as Error).message}`;
+        thrown = e;
       }
-      if (outcome === "stopped") passed++;
-      else {
-        failed++;
-        console.log(`FAIL  ${c.name}\n  expected the checker to stop; it ${outcome} instead`);
+      if (judged) {
+        fail(c.name, ["expected the checker to stop; it judged instead"]);
+        continue;
       }
+      // A raw crash is a failure, not a stop: a stop is a ToolStop carrying a
+      // message that names the remedy (R-D-errors-name-remedy).
+      const e = thrown as Error;
+      const wrongClass = !(e instanceof STOPS[c.stop.is]) || (c.stop.is === "ToolStop" && e instanceof SpecUnreadable);
+      if (wrongClass) {
+        fail(c.name, [`expected a ${c.stop.is}; got ${(e as object)?.constructor?.name ?? typeof e}`, `  it said: ${e?.message ?? String(e)}`]);
+        continue;
+      }
+      const missing = c.stop.has.filter((s) => !e.message.includes(s));
+      if (missing.length) {
+        fail(c.name, ["the stop's message is missing:", ...missing.map((s) => `  ${JSON.stringify(s)}`), `it said: ${e.message}`]);
+        continue;
+      }
+      passed++;
       continue;
     }
     const { violations } = check(root);
-    const got = violations.map((v) => v.rule).sort();
-    const want = [...c.expect].sort();
+    const got = violations.map(at).sort();
+    const want = [...(c.expect ?? [])].sort();
     if (JSON.stringify(got) !== JSON.stringify(want)) {
-      failed++;
-      console.log(`FAIL  ${c.name}`);
-      console.log(`  expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
-      for (const v of violations) console.log(`    ${v.rule}  ${v.path}${v.line ? ":" + v.line : ""}  ${v.message}`);
+      fail(c.name, [
+        "expected:",
+        ...(want.length ? want.map((w) => `  ${w}`) : ["  (clean)"]),
+        "got:",
+        ...(got.length ? got.map((g) => `  ${g}`) : ["  (clean)"]),
+        ...(violations.length ? ["with:", ...violations.map((v) => `  ${at(v)}  ${v.message}`)] : []),
+      ]);
     } else {
       passed++;
     }
